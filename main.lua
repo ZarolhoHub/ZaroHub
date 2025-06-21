@@ -1,183 +1,280 @@
-local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
--- Criar GUI
 local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "ZarohubUI"
 
--- Botão flutuante
+-- Bolinha flutuante
 local floatBtn = Instance.new("TextButton", gui)
 floatBtn.Size = UDim2.new(0, 60, 0, 60)
 floatBtn.Position = UDim2.new(0, 20, 0.5, -30)
 floatBtn.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
 floatBtn.Text = ""
-floatBtn.Draggable = true
+floatBtn.AutoButtonColor = false
 floatBtn.Active = true
-floatBtn.AutoButtonColor = true
 Instance.new("UICorner", floatBtn).CornerRadius = UDim.new(1, 0)
-
--- Contorno preto opcional
-local stroke = Instance.new("UIStroke", floatBtn)
-stroke.Thickness = 2
-stroke.Color = Color3.fromRGB(0, 0, 0)
-stroke.Transparency = 0.3
+local strokeFloat = Instance.new("UIStroke", floatBtn)
+strokeFloat.Thickness = 2
+strokeFloat.Color = Color3.fromRGB(0, 0, 0)
 
 -- Painel principal
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 300, 0, 210)
-frame.Position = UDim2.new(0.5, -150, 0.5, -100)
+frame.Size = UDim2.new(0, 0, 0, 0) -- start fechado
+frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+frame.AnchorPoint = Vector2.new(0.5, 0.5)
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 frame.BorderSizePixel = 0
 frame.Visible = false
-frame.Active = true
-frame.Draggable = true
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+frame.ClipsDescendants = true
 
--- Título
+-- Título (arrastável)
 local title = Instance.new("TextLabel", frame)
 title.Size = UDim2.new(1, 0, 0, 35)
-title.BackgroundTransparency = 1
+title.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+title.BackgroundTransparency = 0.3
 title.Text = "⚡ ZAROHUB ⚡"
 title.TextColor3 = Color3.fromRGB(255, 215, 0)
 title.Font = Enum.Font.GothamBold
-title.TextSize = 20
-title.TextStrokeTransparency = 0.7
-title.Visible = false
+title.TextSize = 22
+title.TextXAlignment = Enum.TextXAlignment.Center
+title.Active = true
 
--- Detecção de jogo
-local jogosSuportados = {
-    [13127800756] = "Arm Wrestle Simulator"
-}
-local placeName = jogosSuportados[game.PlaceId]
-local jogoSuportado = placeName ~= nil
+-- Menu lateral (vertical)
+local menu = Instance.new("Frame", frame)
+menu.Size = UDim2.new(0, 100, 1, -35)
+menu.Position = UDim2.new(0, 0, 0, 35)
+menu.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 10)
 
-local statusLabel = Instance.new("TextLabel", frame)
-statusLabel.Size = UDim2.new(1, 0, 0, 20)
-statusLabel.Position = UDim2.new(0, 0, 0, 35)
-statusLabel.BackgroundTransparency = 1
-statusLabel.Text = jogoSuportado and ("🎮 Jogo detectado: " .. placeName) or "🚫 Jogo não suportado"
-statusLabel.TextColor3 = jogoSuportado and Color3.fromRGB(255, 200, 0) or Color3.fromRGB(255, 80, 80)
-statusLabel.Font = Enum.Font.Gotham
-statusLabel.TextSize = 14
-statusLabel.TextStrokeTransparency = 0.7
-statusLabel.Visible = false
+local menuScroll = Instance.new("ScrollingFrame", menu)
+menuScroll.Size = UDim2.new(1, 0, 1, 0)
+menuScroll.CanvasSize = UDim2.new(0, 0, 2, 0)
+menuScroll.BackgroundTransparency = 1
+menuScroll.ScrollBarThickness = 5
+menuScroll.VerticalScrollBarInset = Enum.ScrollBarInset.Always
 
--- Corpo do painel
-local body = Instance.new("Frame", frame)
-body.Size = UDim2.new(1, -20, 1, -60)
-body.Position = UDim2.new(0, 10, 0, 60)
-body.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Instance.new("UICorner", body).CornerRadius = UDim.new(0, 6)
-body.Visible = false
+-- Conteúdo principal
+local content = Instance.new("Frame", frame)
+content.Size = UDim2.new(1, -100, 1, -35)
+content.Position = UDim2.new(0, 100, 0, 35)
+content.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Instance.new("UICorner", content).CornerRadius = UDim.new(0, 10)
 
--- Fade animado
-local TweenService = game:GetService("TweenService")
+local contentScroll = Instance.new("ScrollingFrame", content)
+contentScroll.Size = UDim2.new(1, 0, 1, 0)
+contentScroll.CanvasSize = UDim2.new(0, 0, 2, 0)
+contentScroll.BackgroundTransparency = 1
+contentScroll.ScrollBarThickness = 5
+contentScroll.VerticalScrollBarInset = Enum.ScrollBarInset.Always
 
-local function fadeIn(obj)
-    obj.Visible = true
-    obj.BackgroundTransparency = 1
-    title.Visible = true
-    statusLabel.Visible = true
-    body.Visible = true
-    TweenService:Create(obj, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+-- Botões do menu
+local function criarBotao(texto, y)
+	local btn = Instance.new("TextButton", menuScroll)
+	btn.Size = UDim2.new(1, -20, 0, 50)
+	btn.Position = UDim2.new(0, 10, 0, y)
+	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	btn.TextColor3 = Color3.fromRGB(255, 215, 0)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 18
+	btn.Text = texto
+	btn.AutoButtonColor = false
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
+
+	local stroke = Instance.new("UIStroke", btn)
+	stroke.Thickness = 2
+	stroke.Color = Color3.fromRGB(255, 215, 0)
+	stroke.Transparency = 0.5
+
+	btn.MouseEnter:Connect(function()
+		stroke.Transparency = 0
+		btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+	end)
+	btn.MouseLeave:Connect(function()
+		stroke.Transparency = 0.5
+		btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	end)
+
+	return btn
 end
 
-local function fadeOut(obj)
-    TweenService:Create(obj, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    wait(0.3)
-    obj.Visible = false
-    title.Visible = false
-    statusLabel.Visible = false
-    body.Visible = false
+local eventoBtn = criarBotao("Evento", 10)
+local treinarBtn = criarBotao("Treinar", 70)
+local ovosBtn = criarBotao("Ovos", 130)
+
+-- Conteúdo de cada aba
+local function criarTexto(txt)
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.new(1, -20, 0, 60)
+	t.Position = UDim2.new(0, 10, 0, 10)
+	t.Text = txt
+	t.TextColor3 = Color3.fromRGB(255, 215, 0)
+	t.Font = Enum.Font.GothamBold
+	t.TextSize = 22
+	t.BackgroundTransparency = 1
+	return t
 end
 
+local eventoTexto = criarTexto("⚡ Conteúdo do Evento ⚡")
+eventoTexto.Parent = contentScroll
+local treinarTexto = criarTexto("💪 Conteúdo de Treinar")
+treinarTexto.Visible = false
+treinarTexto.Parent = contentScroll
+local ovosTexto = criarTexto("🥚 Conteúdo dos Ovos")
+ovosTexto.Visible = false
+ovosTexto.Parent = contentScroll
+
+local function mostrar(qual)
+	eventoTexto.Visible = qual == "Evento"
+	treinarTexto.Visible = qual == "Treinar"
+	ovosTexto.Visible = qual == "Ovos"
+end
+
+eventoBtn.MouseButton1Click:Connect(function() mostrar("Evento") end)
+treinarBtn.MouseButton1Click:Connect(function() mostrar("Treinar") end)
+ovosBtn.MouseButton1Click:Connect(function() mostrar("Ovos") end)
+
+-- Animações do painel
+local painelAberto = false
+local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function abrirPainel()
+	frame.Visible = true
+	local abrirSize = UDim2.new(0, 380, 0, 280)
+	local abrirPos = UDim2.new(0.5, 0, 0.5, 0)
+	local sizeTween = TweenService:Create(frame, tweenInfo, {Size = abrirSize})
+	local posTween = TweenService:Create(frame, tweenInfo, {Position = abrirPos})
+	sizeTween:Play()
+	posTween:Play()
+end
+
+local function fecharPainel()
+	local fecharSize = UDim2.new(0, 0, 0, 0)
+	local fecharPos = UDim2.new(0.5, 0, 0.5, 0)
+	local sizeTween = TweenService:Create(frame, tweenInfo, {Size = fecharSize})
+	local posTween = TweenService:Create(frame, tweenInfo, {Position = fecharPos})
+	sizeTween:Play()
+	posTween:Play()
+	sizeTween.Completed:Wait()
+	frame.Visible = false
+end
+
+-- Lixeira
+local trashArea = Instance.new("Frame", gui)
+trashArea.Size = UDim2.new(0, 120, 0, 120)
+trashArea.Position = UDim2.new(0.5, -60, 1, -130)
+trashArea.BackgroundTransparency = 1
+trashArea.Visible = false
+
+local trashIcon = Instance.new("TextLabel", trashArea)
+trashIcon.Size = UDim2.new(0, 50, 0, 50)
+trashIcon.Position = UDim2.new(0.5, -25, 0.5, -25)
+trashIcon.BackgroundTransparency = 1
+trashIcon.Text = "🗑️"
+trashIcon.TextScaled = true
+trashIcon.TextColor3 = Color3.fromRGB(255, 0, 0)
+trashIcon.Font = Enum.Font.GothamBold
+
+-- Arrastar bolinha
+local dragging = false
+local dragInput, dragStart, startPos
+local isDragging = false
+
+floatBtn.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		isDragging = false
+		dragStart = input.Position
+		startPos = floatBtn.Position
+		trashArea.Visible = true
+		trashIcon.TextTransparency = 1
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+				trashArea.Visible = false
+				trashIcon.TextTransparency = 1
+
+				local btnPos = floatBtn.AbsolutePosition
+				local trashPos = trashArea.AbsolutePosition
+				local trashSize = trashArea.AbsoluteSize
+				local insideX = btnPos.X > trashPos.X and btnPos.X < trashPos.X + trashSize.X
+				local insideY = btnPos.Y > trashPos.Y and btnPos.Y < trashPos.Y + trashSize.Y
+
+				if insideX and insideY then
+					gui:Destroy()
+				end
+			end
+		end)
+	end
+end)
+
+floatBtn.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - dragStart
+		floatBtn.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+		isDragging = true
+
+		local btnPos = floatBtn.AbsolutePosition + floatBtn.AbsoluteSize / 2
+		local trashPos = trashArea.AbsolutePosition + trashArea.AbsoluteSize / 2
+		local dist = (btnPos - trashPos).Magnitude
+		local alpha = math.clamp(1 - dist / 200, 0, 1)
+		trashIcon.TextTransparency = 1 - alpha
+	end
+end)
+
+-- Corrigido: painel só abre se não for arrasto
 floatBtn.MouseButton1Click:Connect(function()
-    if frame.Visible then
-        fadeOut(frame)
-    else
-        fadeIn(frame)
-    end
+	task.delay(0.05, function()
+		if not isDragging then
+			if painelAberto then
+				fecharPainel()
+			else
+				abrirPainel()
+			end
+			painelAberto = not painelAberto
+		end
+	end)
 end)
 
--- Abas
-local abaFarm = Instance.new("TextButton", body)
-abaFarm.Size = UDim2.new(0.5, -5, 0, 30)
-abaFarm.Position = UDim2.new(0, 0, 0, 0)
-abaFarm.Text = "Farm"
-abaFarm.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-abaFarm.TextColor3 = Color3.fromRGB(255, 215, 0)
-abaFarm.Font = Enum.Font.GothamBold
-abaFarm.TextSize = 14
-Instance.new("UICorner", abaFarm).CornerRadius = UDim.new(0, 6)
+-- Arrastar painel
+local draggingPanel = false
+local panelDragInput, panelDragStart, panelStartPos
 
-local abaUtils = Instance.new("TextButton", body)
-abaUtils.Size = UDim2.new(0.5, -5, 0, 30)
-abaUtils.Position = UDim2.new(0.5, 5, 0, 0)
-abaUtils.Text = "Utilidades"
-abaUtils.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-abaUtils.TextColor3 = Color3.fromRGB(255, 215, 0)
-abaUtils.Font = Enum.Font.GothamBold
-abaUtils.TextSize = 14
-Instance.new("UICorner", abaUtils).CornerRadius = UDim.new(0, 6)
-
--- Frames das abas
-local abaFarmFrame = Instance.new("Frame", body)
-abaFarmFrame.Size = UDim2.new(1, 0, 1, -35)
-abaFarmFrame.Position = UDim2.new(0, 0, 0, 35)
-abaFarmFrame.BackgroundTransparency = 1
-abaFarmFrame.Visible = true
-
-local abaUtilsFrame = Instance.new("Frame", body)
-abaUtilsFrame.Size = UDim2.new(1, 0, 1, -35)
-abaUtilsFrame.Position = UDim2.new(0, 0, 0, 35)
-abaUtilsFrame.BackgroundTransparency = 1
-abaUtilsFrame.Visible = false
-
-abaFarm.MouseButton1Click:Connect(function()
-    abaFarmFrame.Visible = true
-    abaUtilsFrame.Visible = false
+title.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingPanel = true
+		panelDragStart = input.Position
+		panelStartPos = frame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				draggingPanel = false
+			end
+		end)
+	end
 end)
 
-abaUtils.MouseButton1Click:Connect(function()
-    abaFarmFrame.Visible = false
-    abaUtilsFrame.Visible = true
+title.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		panelDragInput = input
+	end
 end)
 
--- Criador de botões no estilo LDS
-local function criarBotao(nome, posY, parent)
-    local botao = Instance.new("TextButton", parent)
-    botao.Size = UDim2.new(1, -20, 0, 35)
-    botao.Position = UDim2.new(0, 10, 0, posY)
-    botao.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    botao.TextColor3 = Color3.fromRGB(255, 215, 0)
-    botao.Font = Enum.Font.GothamBold
-    botao.TextSize = 14
-    botao.Text = nome
-    botao.AutoButtonColor = false
-    Instance.new("UICorner", botao).CornerRadius = UDim.new(0, 8)
-
-    local stroke = Instance.new("UIStroke", botao)
-    stroke.Thickness = 1.2
-    stroke.Color = Color3.fromRGB(255, 215, 0)
-    stroke.Transparency = 0.4
-
-    botao.MouseEnter:Connect(function()
-        stroke.Transparency = 0
-        botao.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    end)
-    botao.MouseLeave:Connect(function()
-        stroke.Transparency = 0.4
-        botao.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    end)
-
-    local ativo = false
-    botao.MouseButton1Click:Connect(function()
-        ativo = not ativo
-        botao.Text = ativo and (nome .. " [ON]") or nome
-        stroke.Color = ativo and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(255, 215, 0)
-    end)
-end
-
--- Adiciona botões de exemplo na aba Farm
-criarBotao("⚡ Auto Train", 0, abaFarmFrame)
-criarBotao("🔁 Auto Rebirth", 45, abaFarmFrame)
+UserInputService.InputChanged:Connect(function(input)
+	if input == panelDragInput and draggingPanel then
+		local delta = input.Position - panelDragStart
+		frame.Position = UDim2.new(
+			panelStartPos.X.Scale, panelStartPos.X.Offset + delta.X,
+			panelStartPos.Y.Scale, panelStartPos.Y.Offset + delta.Y
+		)
+	end
+end)
