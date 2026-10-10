@@ -1,4 +1,4 @@
--- AUTO EGG • Menu lateral + dropdown de ovos + switch deslizante
+-- AUTO EGG • Abas: Eggs (abrir ovos) e Void (craft de pets Void)
 -- "=" abre/fecha o menu lateral | "-" minimiza | "X" fecha e encerra tudo
 
 local function main()
@@ -152,6 +152,7 @@ local function main()
     }, main, 10)
     lbl(sidebar, "MENU", 14, 8, 80, 16, 10, DIM)
     local eggsTab = btn(sidebar, "🥚  Eggs", 6, 28, 92, 34, ACCENT, 13)
+    local voidTab = btn(sidebar, "🌀  Void", 6, 68, 92, 34, PANEL2, 13)
 
     local content = mk("ScrollingFrame", {
         Position = UDim2.new(0, 120, 0, 42),
@@ -168,23 +169,44 @@ local function main()
     cLayout.SortOrder = Enum.SortOrder.LayoutOrder
     cLayout.Parent = content
 
+    local voidPage = mk("ScrollingFrame", {
+        Position = UDim2.new(0, 120, 0, 42),
+        Size = UDim2.new(0, 312, 0, 220),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = ACCENT,
+        Visible = false,
+    }, main)
+    local vLayout = Instance.new("UIListLayout")
+    vLayout.Padding = UDim.new(0, 8)
+    vLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    vLayout.Parent = voidPage
+
     local sidebarOpen = true
     local function setSidebar(open)
         sidebarOpen = open
         tween(sidebar, 0.25, { Size = UDim2.new(0, open and 104 or 0, 0, 220) })
-        tween(content, 0.25, {
-            Position = UDim2.new(0, open and 120 or 8, 0, 42),
-            Size = UDim2.new(0, open and 312 or 424, 0, 220),
-        })
+        for _, page in ipairs({ content, voidPage }) do
+            tween(page, 0.25, {
+                Position = UDim2.new(0, open and 120 or 8, 0, 42),
+                Size = UDim2.new(0, open and 312 or 424, 0, 220),
+            })
+        end
     end
     menuBtn.MouseButton1Click:Connect(function() setSidebar(not sidebarOpen) end)
 
-    -- Aba "Eggs" (página única por enquanto)
-    local function selectTab()
-        content.Visible = true
-        tween(eggsTab, 0.2, { BackgroundColor3 = ACCENT })
+    -- Troca de abas
+    local function selectTab(name)
+        content.Visible = (name == "Eggs")
+        voidPage.Visible = (name == "Void")
+        tween(eggsTab, 0.2, { BackgroundColor3 = name == "Eggs" and ACCENT or PANEL2 })
+        tween(voidTab, 0.2, { BackgroundColor3 = name == "Void" and ACCENT or PANEL2 })
     end
-    eggsTab.MouseButton1Click:Connect(selectTab)
+    eggsTab.MouseButton1Click:Connect(function() selectTab("Eggs") end)
+    voidTab.MouseButton1Click:Connect(function() selectTab("Void") end)
 
     ----------------------------------------------------
     -- CARTÃO: DROPDOWN DE OVOS + SWITCH
@@ -379,6 +401,142 @@ local function main()
     local countLabel = lbl(card3, "Pedidos enviados: 0", 14, 0, 250, 40, 12, WHITE)
 
     ----------------------------------------------------
+    -- ABA VOID: manda pets Gold para a máquina Void
+    ----------------------------------------------------
+    local voidOn = false
+    local voidInterval = 2
+    local voidSent = 0
+    local sentAt = {}
+    local voidEvent = nil
+
+    local function findVoidEvent()
+        local node = RS
+        for _, n in ipairs({ "Packages", "Knit", "Services", "PetVoidService", "RE", "onCraftToVoid" }) do
+            node = node and node:FindFirstChild(n)
+        end
+        return node
+    end
+    voidEvent = findVoidEvent()
+
+    -- Pets do inventário: cada Frame (nome = GUID) tem um "Toggle" com atributos (Tier, Multiplier, GUID...)
+    local function findGold()
+        local folder = PlayerGui
+        for _, n in ipairs({ "GameUI", "Menus", "Inventory", "Display", "Pets", "ScrollingFrame", "Pets" }) do
+            folder = folder and folder:FindFirstChild(n)
+        end
+        if not folder then return nil, 0, false end
+
+        local best, bestMult, total = nil, nil, 0
+        for _, fr in ipairs(folder:GetChildren()) do
+            local tg = fr:FindFirstChild("Toggle")
+            if tg and string.find(string.lower(tostring(tg:GetAttribute("Tier") or "")), "gold", 1, true)
+                and not fr:GetAttribute("VoidMachine") and not fr:GetAttribute("EndTime") then
+                total = total + 1
+                local guid = tg:GetAttribute("GUID") or fr.Name
+                local recent = sentAt[guid] and (os.clock() - sentAt[guid] < 30)
+                if not recent then
+                    local m = tonumber(tg:GetAttribute("Multiplier")) or 0
+                    if not best or m < bestMult then
+                        best, bestMult = guid, m
+                    end
+                end
+            end
+        end
+        return best, total, true
+    end
+
+    local function voidCard(order, h)
+        local c = mk("Frame", {
+            LayoutOrder = order,
+            Size = UDim2.new(1, -10, 0, h),
+            BackgroundColor3 = PANEL,
+            BorderSizePixel = 0,
+        }, voidPage, 10)
+        stroke(c, ACCENT, 1.5)
+        return c
+    end
+
+    -- Cartão 1: switch
+    local vc1 = voidCard(1, 48)
+    lbl(vc1, "Auto Void", 14, 6, 150, 20, 14, WHITE)
+    local voidStatus = lbl(vc1, "Parado", 14, 26, 170, 16, 11, CYAN)
+    local vTrack = mk("TextButton", {
+        Position = UDim2.new(1, -58, 0, 12),
+        Size = UDim2.new(0, 46, 0, 24),
+        BackgroundColor3 = OFFC,
+        Text = "",
+        AutoButtonColor = false,
+    }, vc1, 12)
+    local vKnob = mk("Frame", {
+        Position = UDim2.new(0, 3, 0, 3),
+        Size = UDim2.new(0, 18, 0, 18),
+        BackgroundColor3 = WHITE,
+        BorderSizePixel = 0,
+    }, vTrack, 9)
+    vTrack.MouseButton1Click:Connect(function()
+        voidOn = not voidOn
+        tween(vTrack, 0.2, { BackgroundColor3 = voidOn and GREEN or OFFC })
+        tween(vKnob, 0.2, { Position = voidOn and UDim2.new(0, 25, 0, 3) or UDim2.new(0, 3, 0, 3) })
+        voidStatus.Text = voidOn and "Procurando pet Gold..." or "Parado"
+    end)
+
+    -- Cartão 2: intervalo
+    local vc2 = voidCard(2, 48)
+    lbl(vc2, "Intervalo", 14, 0, 100, 48, 14, WHITE)
+    local vMinus = btn(vc2, "-", 0, 0, 28, 24, PANEL2, 15)
+    vMinus.Position = UDim2.new(1, -150, 0, 12)
+    local vDelayLabel = lbl(vc2, "2.0s", 0, 0, 70, 24, 13, CYAN, Enum.TextXAlignment.Center)
+    vDelayLabel.Position = UDim2.new(1, -118, 0, 12)
+    local vPlus = btn(vc2, "+", 0, 0, 28, 24, PANEL2, 15)
+    vPlus.Position = UDim2.new(1, -42, 0, 12)
+    local function setVoidInterval(v)
+        voidInterval = math.clamp(math.floor(v * 10 + 0.5) / 10, 0.5, 10)
+        vDelayLabel.Text = string.format("%.1fs", voidInterval)
+    end
+    vMinus.MouseButton1Click:Connect(function() setVoidInterval(voidInterval - 0.5) end)
+    vPlus.MouseButton1Click:Connect(function() setVoidInterval(voidInterval + 0.5) end)
+
+    -- Cartão 3: contadores
+    local vc3 = voidCard(3, 54)
+    local goldLabel = lbl(vc3, "Pets Gold disponíveis: -", 14, 6, 270, 20, 12, WHITE)
+    local sentLabel = lbl(vc3, "Enviados para a máquina: 0", 14, 28, 270, 20, 12, WHITE)
+
+    -- Cartão 4: aviso
+    local vc4 = voidCard(4, 70)
+    local info = lbl(vc4, "Envia o pet Gold de menor multiplicador para a máquina Void. Abra o inventário de pets ao menos uma vez para a lista carregar.", 14, 6, 270, 58, 11, DIM)
+    info.TextWrapped = true
+    info.TextYAlignment = Enum.TextYAlignment.Top
+    info.Font = Enum.Font.Gotham
+
+    local voidLoop = task.spawn(function()
+        while running do
+            if voidOn then
+                if not voidEvent then voidEvent = findVoidEvent() end
+                local guid, total, found = findGold()
+                if not found then
+                    voidStatus.Text = "Inventário de pets não carregado"
+                elseif not voidEvent then
+                    voidStatus.Text = "Remote da máquina não achado"
+                else
+                    goldLabel.Text = "Pets Gold disponíveis: " .. total
+                    if guid then
+                        local ok = pcall(function() voidEvent:FireServer(guid) end)
+                        if ok then
+                            sentAt[guid] = os.clock()
+                            voidSent = voidSent + 1
+                            sentLabel.Text = "Enviados para a máquina: " .. voidSent
+                            voidStatus.Text = "Enviando Gold..."
+                        end
+                    else
+                        voidStatus.Text = "Nenhum Gold livre no momento"
+                    end
+                end
+            end
+            task.wait(voidInterval)
+        end
+    end)
+
+    ----------------------------------------------------
     -- MINIMIZAR (botão flutuante)
     ----------------------------------------------------
     local orb = mk("TextButton", {
@@ -432,6 +590,7 @@ local function main()
         running = false
         autoBuying = false
         pcall(task.cancel, loop)
+        pcall(task.cancel, voidLoop)
         ENV.__AutoEggMenu = nil
         gui:Destroy()
     end
