@@ -5,6 +5,8 @@
     - Fechar (X) encerra 100% o script: loops, conexões, animações e GUI
 ]]
 
+local function __main()
+print("[AutoEgg Premium] iniciando...")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -20,13 +22,16 @@ if ENV.__AutoEggPremium_Shutdown then
     pcall(ENV.__AutoEggPremium_Shutdown)
 end
 
--- RemoteFunction de compra (EggService)
-local EggEvent = ReplicatedStorage:WaitForChild("Packages")
-    :WaitForChild("Knit")
-    :WaitForChild("Services")
-    :WaitForChild("EggService")
-    :WaitForChild("RF")
-    :WaitForChild("purchaseEgg")
+-- RemoteFunction de compra (EggService) - busca sem travar a interface
+local EggEvent = nil
+local function findRemote()
+    local node = ReplicatedStorage
+    for _, name in ipairs({ "Packages", "Knit", "Services", "EggService", "RF", "purchaseEgg" }) do
+        node = node and node:FindFirstChild(name)
+    end
+    return node
+end
+EggEvent = findRemote()
 
 ----------------------------------------------------
 -- ESTADO
@@ -574,7 +579,7 @@ local function applyFilter()
     for _, e in ipairs(eggButtons) do
         local show = (f == "") or (string.find(string.lower(e.Clean), f, 1, true) ~= nil)
         e.Btn.Visible = show
-        if show then n += 1 end
+        if show then n = n + 1 end
     end
     CountLabel.Text = n .. (n == 1 and " ovo" or " ovos")
 end
@@ -759,7 +764,7 @@ local function orbHalf() return 29, 29 end
 local animToken = 0
 
 local function showMain()
-    animToken += 1
+    animToken = animToken + 1
     local tok = animToken
     local o = OrbRoot.Position
     local hw, hh = holderHalf()
@@ -774,7 +779,7 @@ local function showMain()
 end
 
 local function showOrb()
-    animToken += 1
+    animToken = animToken + 1
     local tok = animToken
     local h = Holder.Position
     OrbRoot.Position = clampPos(h.X.Offset, h.Y.Offset, 29, 29)
@@ -961,7 +966,7 @@ end
 ----------------------------------------------------
 local t = 0
 bind(RunService.RenderStepped, function(dt)
-    t += dt
+    t = t + dt
 
     if Holder.Visible then
         BorderGrad.Rotation = (t * 90) % 360
@@ -972,7 +977,7 @@ bind(RunService.RenderStepped, function(dt)
 
         local speed = autoBuying and 2.2 or 1
         for _, p in ipairs(particles) do
-            p.y -= p.sp * speed * dt
+            p.y = p.y - p.sp * speed * dt
             if p.y < -0.05 then
                 p.y = 1.05
                 p.x = math.random()
@@ -1004,7 +1009,11 @@ end)
 ----------------------------------------------------
 spawnTracked(function()
     while alive do
-        if autoBuying and selectedEggRaw ~= "" then
+        if autoBuying and not EggEvent then
+            EggEvent = findRemote()
+            StatusLabel.Text = EggEvent and "COMPRANDO" or "REMOTE NAO ACHADO"
+        end
+        if autoBuying and EggEvent and selectedEggRaw ~= "" then
             local ok = pcall(function()
                 EggEvent:InvokeServer(
                     selectedEggRaw,
@@ -1017,7 +1026,7 @@ spawnTracked(function()
                 )
             end)
             if ok then
-                purchases += 1
+                purchases = purchases + 1
                 PurchaseLabel.Text = tostring(purchases)
             end
         end
@@ -1057,3 +1066,10 @@ end
 
 ENV.__AutoEggPremium_Shutdown = shutdown
 CloseBtn.MouseButton1Click:Connect(shutdown)
+print("[AutoEgg Premium] pronto")
+end
+
+local __ok, __err = xpcall(__main, function(e) return tostring(e) .. "\n" .. debug.traceback() end)
+if not __ok then
+    warn("[AutoEgg Premium] ERRO: " .. tostring(__err))
+end
