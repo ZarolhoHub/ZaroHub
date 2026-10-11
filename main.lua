@@ -1,5 +1,14 @@
--- AUTO EGG • Abas: Eggs (abrir ovos) e Void (craft de pets Void)
--- "=" abre/fecha o menu lateral | "-" minimiza | "X" fecha e encerra tudo
+-- ZARO HUB
+-- Fundo (opcional): preencha BG_IMAGE e/ou BG_VIDEO abaixo. Deixe "" para fundo liso.
+
+local CONFIG = {
+    NAME_A = "ZARO",
+    NAME_B = "HUB",
+    ACCENT = Color3.fromRGB(190, 255, 60),
+    BG_IMAGE = "", -- "rbxassetid://123" ou link direto .png/.jpg
+    BG_VIDEO = "", -- link direto .webm (mais leve) ou .mp4
+    BG_DIM = 0.45, -- escurecimento do fundo (0 = sem escurecer)
+}
 
 local function main()
     local Players = game:GetService("Players")
@@ -8,6 +17,7 @@ local function main()
     local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
     local ENV = (getgenv and getgenv()) or _G
+    if ENV.__ZaroHub then pcall(ENV.__ZaroHub) end
     if ENV.__AutoEggMenu then pcall(ENV.__AutoEggMenu) end
 
     local running = true
@@ -15,19 +25,26 @@ local function main()
     local selected = "RibbonBlossom"
     local delayTime = 0.5
     local count = 0
-    local multiOpen = true -- 6º argumento do purchaseEgg: abertura múltipla (máximo da conta)
+    local multiOpen = true
+
+    local voidOn = false
+    local voidInterval = 2
+    local voidSent = 0
+    local sentAt = {}
 
     ----------------------------------------------------
-    -- REMOTE E OVOS
+    -- REMOTES E DADOS
     ----------------------------------------------------
-    local function findRemote()
-        local node = RS
-        for _, n in ipairs({ "Packages", "Knit", "Services", "EggService", "RF", "purchaseEgg" }) do
+    local function dig(root, path)
+        local node = root
+        for _, n in ipairs(path) do
             node = node and node:FindFirstChild(n)
         end
         return node
     end
-    local remote = findRemote()
+
+    local eggRemote = dig(RS, { "Packages", "Knit", "Services", "EggService", "RF", "purchaseEgg" })
+    local voidEvent = dig(RS, { "Packages", "Knit", "Services", "PetVoidService", "RE", "onCraftToVoid" })
 
     local function cleanName(n)
         local r = n:gsub("_infstring", ""):gsub("infstring", ""):gsub("_string", "")
@@ -48,384 +65,9 @@ local function main()
     if #eggs == 0 then eggs = { selected } end
     table.sort(eggs)
 
-    ----------------------------------------------------
-    -- UTILITÁRIOS
-    ----------------------------------------------------
-    local BG = Color3.fromRGB(18, 16, 38)
-    local PANEL = Color3.fromRGB(32, 29, 62)
-    local PANEL2 = Color3.fromRGB(46, 42, 88)
-    local ACCENT = Color3.fromRGB(130, 90, 255)
-    local CYAN = Color3.fromRGB(0, 210, 255)
-    local GREEN = Color3.fromRGB(30, 215, 120)
-    local RED = Color3.fromRGB(225, 60, 85)
-    local OFFC = Color3.fromRGB(72, 66, 112)
-    local DIM = Color3.fromRGB(160, 165, 210)
-    local WHITE = Color3.new(1, 1, 1)
-
-    local function tween(o, t, props)
-        local tw = TweenService:Create(o, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
-        tw:Play()
-        return tw
-    end
-
-    local function mk(class, props, parent, radius)
-        local o = Instance.new(class)
-        for k, v in pairs(props) do o[k] = v end
-        if radius then
-            local c = Instance.new("UICorner")
-            c.CornerRadius = UDim.new(0, radius)
-            c.Parent = o
-        end
-        o.Parent = parent
-        return o
-    end
-
-    local function stroke(o, color, th)
-        local s = Instance.new("UIStroke")
-        s.Color = color
-        s.Thickness = th
-        s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        s.Parent = o
-        return s
-    end
-
-    local function lbl(parent, text, x, y, w, h, size, color, align)
-        return mk("TextLabel", {
-            Position = UDim2.new(0, x, 0, y),
-            Size = UDim2.new(0, w, 0, h),
-            BackgroundTransparency = 1,
-            Text = text,
-            TextColor3 = color or WHITE,
-            TextSize = size,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = align or Enum.TextXAlignment.Left,
-        }, parent)
-    end
-
-    local function btn(parent, text, x, y, w, h, color, size)
-        return mk("TextButton", {
-            Position = UDim2.new(0, x, 0, y),
-            Size = UDim2.new(0, w, 0, h),
-            BackgroundColor3 = color,
-            Text = text,
-            TextColor3 = WHITE,
-            TextSize = size or 13,
-            Font = Enum.Font.GothamBold,
-            AutoButtonColor = false,
-        }, parent, 8)
-    end
-
-    ----------------------------------------------------
-    -- JANELA
-    ----------------------------------------------------
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "AutoEgg_Menu"
-    gui.ResetOnSpawn = false
-    gui.DisplayOrder = 999
-    gui.Parent = PlayerGui
-
-    local main = mk("Frame", {
-        Size = UDim2.new(0, 440, 0, 270),
-        Position = UDim2.new(0.5, -220, 0.25, 0),
-        BackgroundColor3 = BG,
-        BorderSizePixel = 0,
-        Active = true,
-        Draggable = true,
-    }, gui, 14)
-    local mainStroke = stroke(main, ACCENT, 2)
-
-    -- Barra de título
-    local menuBtn = btn(main, "=", 10, 6, 28, 26, PANEL2, 16)
-    lbl(main, "AUTO EGG", 46, 6, 200, 26, 17, WHITE)
-    local minBtn = btn(main, "-", 366, 6, 28, 26, PANEL2, 16)
-    local closeBtn = btn(main, "X", 402, 6, 28, 26, RED, 13)
-
-    ----------------------------------------------------
-    -- MENU LATERAL
-    ----------------------------------------------------
-    local sidebar = mk("Frame", {
-        Position = UDim2.new(0, 8, 0, 42),
-        Size = UDim2.new(0, 104, 0, 220),
-        BackgroundColor3 = PANEL,
-        BorderSizePixel = 0,
-        ClipsDescendants = true,
-    }, main, 10)
-    lbl(sidebar, "MENU", 14, 8, 80, 16, 10, DIM)
-    local eggsTab = btn(sidebar, "🥚  Eggs", 6, 28, 92, 34, ACCENT, 13)
-    local voidTab = btn(sidebar, "🌀  Void", 6, 68, 92, 34, PANEL2, 13)
-
-    local content = mk("ScrollingFrame", {
-        Position = UDim2.new(0, 120, 0, 42),
-        Size = UDim2.new(0, 312, 0, 220),
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ScrollBarThickness = 3,
-        ScrollBarImageColor3 = ACCENT,
-    }, main)
-    local cLayout = Instance.new("UIListLayout")
-    cLayout.Padding = UDim.new(0, 8)
-    cLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    cLayout.Parent = content
-
-    local voidPage = mk("ScrollingFrame", {
-        Position = UDim2.new(0, 120, 0, 42),
-        Size = UDim2.new(0, 312, 0, 220),
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ScrollBarThickness = 3,
-        ScrollBarImageColor3 = ACCENT,
-        Visible = false,
-    }, main)
-    local vLayout = Instance.new("UIListLayout")
-    vLayout.Padding = UDim.new(0, 8)
-    vLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    vLayout.Parent = voidPage
-
-    local sidebarOpen = true
-    local function setSidebar(open)
-        sidebarOpen = open
-        tween(sidebar, 0.25, { Size = UDim2.new(0, open and 104 or 0, 0, 220) })
-        for _, page in ipairs({ content, voidPage }) do
-            tween(page, 0.25, {
-                Position = UDim2.new(0, open and 120 or 8, 0, 42),
-                Size = UDim2.new(0, open and 312 or 424, 0, 220),
-            })
-        end
-    end
-    menuBtn.MouseButton1Click:Connect(function() setSidebar(not sidebarOpen) end)
-
-    -- Troca de abas
-    local function selectTab(name)
-        content.Visible = (name == "Eggs")
-        voidPage.Visible = (name == "Void")
-        tween(eggsTab, 0.2, { BackgroundColor3 = name == "Eggs" and ACCENT or PANEL2 })
-        tween(voidTab, 0.2, { BackgroundColor3 = name == "Void" and ACCENT or PANEL2 })
-    end
-    eggsTab.MouseButton1Click:Connect(function() selectTab("Eggs") end)
-    voidTab.MouseButton1Click:Connect(function() selectTab("Void") end)
-
-    ----------------------------------------------------
-    -- CARTÃO: DROPDOWN DE OVOS + SWITCH
-    ----------------------------------------------------
-    local COLLAPSED_H, EXPANDED_H = 48, 196
-
-    local card = mk("Frame", {
-        LayoutOrder = 1,
-        Size = UDim2.new(1, -10, 0, COLLAPSED_H),
-        BackgroundColor3 = PANEL,
-        BorderSizePixel = 0,
-        ClipsDescendants = true,
-    }, content, 10)
-    local cardStroke = stroke(card, ACCENT, 1.5)
-
-    local header = mk("TextButton", {
-        Size = UDim2.new(1, 0, 0, COLLAPSED_H),
-        BackgroundTransparency = 1,
-        Text = "",
-        AutoButtonColor = false,
-    }, card)
-    lbl(header, "Auto Egg", 14, 6, 150, 20, 14, WHITE)
-    local selLabel = lbl(header, "Ovo: " .. cleanName(selected), 14, 26, 150, 16, 11, CYAN)
-    local arrow = lbl(header, "^", 0, 0, 28, COLLAPSED_H, 18, CYAN, Enum.TextXAlignment.Center)
-    arrow.Position = UDim2.new(1, -96, 0, 0)
-
-    -- Switch deslizante
-    local track = mk("TextButton", {
-        Position = UDim2.new(1, -58, 0, 12),
-        Size = UDim2.new(0, 46, 0, 24),
-        BackgroundColor3 = OFFC,
-        Text = "",
-        AutoButtonColor = false,
-        ZIndex = 2,
-    }, card, 12)
-    local knob = mk("Frame", {
-        Position = UDim2.new(0, 3, 0, 3),
-        Size = UDim2.new(0, 18, 0, 18),
-        BackgroundColor3 = WHITE,
-        BorderSizePixel = 0,
-        ZIndex = 3,
-    }, track, 9)
-
-    local function setActive(on)
-        autoBuying = on
-        tween(track, 0.2, { BackgroundColor3 = on and GREEN or OFFC })
-        tween(knob, 0.2, { Position = on and UDim2.new(0, 25, 0, 3) or UDim2.new(0, 3, 0, 3) })
-        tween(mainStroke, 0.2, { Color = on and GREEN or ACCENT })
-        tween(cardStroke, 0.2, { Color = on and GREEN or ACCENT })
-    end
-    track.MouseButton1Click:Connect(function() setActive(not autoBuying) end)
-
-    -- Área que aparece ao expandir
-    local drop = mk("Frame", {
-        Position = UDim2.new(0, 0, 0, 52),
-        Size = UDim2.new(1, 0, 0, 140),
-        BackgroundTransparency = 1,
-        Visible = false,
-    }, card)
-
-    local search = mk("TextBox", {
-        Position = UDim2.new(0, 10, 0, 0),
-        Size = UDim2.new(1, -20, 0, 28),
-        BackgroundColor3 = BG,
-        PlaceholderText = "Pesquisar ovo...",
-        PlaceholderColor3 = DIM,
-        Text = "",
-        TextColor3 = WHITE,
-        TextSize = 12,
-        Font = Enum.Font.Gotham,
-        ClearTextOnFocus = false,
-    }, drop, 8)
-
-    local list = mk("ScrollingFrame", {
-        Position = UDim2.new(0, 10, 0, 34),
-        Size = UDim2.new(1, -20, 0, 100),
-        BackgroundColor3 = BG,
-        BorderSizePixel = 0,
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ScrollBarThickness = 3,
-        ScrollBarImageColor3 = CYAN,
-    }, drop)
-    local lLayout = Instance.new("UIListLayout")
-    lLayout.Padding = UDim.new(0, 3)
-    lLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    lLayout.Parent = list
-
-    local function refreshList()
-        for _, c in ipairs(list:GetChildren()) do
-            if c:IsA("TextButton") then c:Destroy() end
-        end
-        local f = string.lower(search.Text)
-        for i, raw in ipairs(eggs) do
-            local nm = cleanName(raw)
-            if f == "" or string.find(string.lower(nm), f, 1, true) then
-                local b = btn(list, nm, 0, 0, 0, 26, raw == selected and ACCENT or PANEL, 12)
-                b.Size = UDim2.new(1, -8, 0, 26)
-                b.LayoutOrder = i
-                b.MouseButton1Click:Connect(function()
-                    selected = raw
-                    selLabel.Text = "Ovo: " .. nm
-                    refreshList()
-                end)
-            end
-        end
-    end
-    refreshList()
-    search:GetPropertyChangedSignal("Text"):Connect(refreshList)
-
-    -- Expandir / recolher
-    local expanded = false
-    header.MouseButton1Click:Connect(function()
-        expanded = not expanded
-        arrow.Text = expanded and "v" or "^"
-        if expanded then
-            drop.Visible = true
-        else
-            task.delay(0.26, function()
-                if running and not expanded then drop.Visible = false end
-            end)
-        end
-        tween(card, 0.25, { Size = UDim2.new(1, -10, 0, expanded and EXPANDED_H or COLLAPSED_H) })
-    end)
-
-    ----------------------------------------------------
-    -- CARTÃO: DELAY
-    ----------------------------------------------------
-    local card2 = mk("Frame", {
-        LayoutOrder = 2,
-        Size = UDim2.new(1, -10, 0, 48),
-        BackgroundColor3 = PANEL,
-        BorderSizePixel = 0,
-    }, content, 10)
-    stroke(card2, PANEL2, 1.5)
-    lbl(card2, "Delay", 14, 0, 100, 48, 14, WHITE)
-
-    local minus = btn(card2, "-", 0, 0, 28, 24, PANEL2, 15)
-    minus.Position = UDim2.new(1, -150, 0, 12)
-    local delayLabel = lbl(card2, "0.5s", 0, 0, 70, 24, 13, CYAN, Enum.TextXAlignment.Center)
-    delayLabel.Position = UDim2.new(1, -118, 0, 12)
-    local plus = btn(card2, "+", 0, 0, 28, 24, PANEL2, 15)
-    plus.Position = UDim2.new(1, -42, 0, 12)
-
-    local function setDelay(v)
-        delayTime = math.clamp(math.floor(v * 10 + 0.5) / 10, 0.1, 3)
-        delayLabel.Text = string.format("%.1fs", delayTime)
-    end
-    minus.MouseButton1Click:Connect(function() setDelay(delayTime - 0.1) end)
-    plus.MouseButton1Click:Connect(function() setDelay(delayTime + 0.1) end)
-
-    ----------------------------------------------------
-    -- CARTÃO: ABRIR MÁXIMO (multi)
-    ----------------------------------------------------
-    local card4 = mk("Frame", {
-        LayoutOrder = 3,
-        Size = UDim2.new(1, -10, 0, 48),
-        BackgroundColor3 = PANEL,
-        BorderSizePixel = 0,
-    }, content, 10)
-    stroke(card4, PANEL2, 1.5)
-    lbl(card4, "Abrir máximo (multi)", 14, 0, 180, 48, 13, WHITE)
-    local mTrack = mk("TextButton", {
-        Position = UDim2.new(1, -58, 0, 12),
-        Size = UDim2.new(0, 46, 0, 24),
-        BackgroundColor3 = GREEN,
-        Text = "",
-        AutoButtonColor = false,
-    }, card4, 12)
-    local mKnob = mk("Frame", {
-        Position = UDim2.new(0, 25, 0, 3),
-        Size = UDim2.new(0, 18, 0, 18),
-        BackgroundColor3 = WHITE,
-        BorderSizePixel = 0,
-    }, mTrack, 9)
-    mTrack.MouseButton1Click:Connect(function()
-        multiOpen = not multiOpen
-        tween(mTrack, 0.2, { BackgroundColor3 = multiOpen and GREEN or OFFC })
-        tween(mKnob, 0.2, { Position = multiOpen and UDim2.new(0, 25, 0, 3) or UDim2.new(0, 3, 0, 3) })
-    end)
-
-    ----------------------------------------------------
-    -- CARTÃO: PEDIDOS
-    ----------------------------------------------------
-    local card3 = mk("Frame", {
-        LayoutOrder = 4,
-        Size = UDim2.new(1, -10, 0, 40),
-        BackgroundColor3 = PANEL,
-        BorderSizePixel = 0,
-    }, content, 10)
-    stroke(card3, PANEL2, 1.5)
-    local countLabel = lbl(card3, "Pedidos enviados: 0", 14, 0, 250, 40, 12, WHITE)
-
-    ----------------------------------------------------
-    -- ABA VOID: manda pets Gold para a máquina Void
-    ----------------------------------------------------
-    local voidOn = false
-    local voidInterval = 2
-    local voidSent = 0
-    local sentAt = {}
-    local voidEvent = nil
-
-    local function findVoidEvent()
-        local node = RS
-        for _, n in ipairs({ "Packages", "Knit", "Services", "PetVoidService", "RE", "onCraftToVoid" }) do
-            node = node and node:FindFirstChild(n)
-        end
-        return node
-    end
-    voidEvent = findVoidEvent()
-
-    -- Pets do inventário: cada Frame (nome = GUID) tem um "Toggle" com atributos (Tier, Multiplier, GUID...)
     local function findGold()
-        local folder = PlayerGui
-        for _, n in ipairs({ "GameUI", "Menus", "Inventory", "Display", "Pets", "ScrollingFrame", "Pets" }) do
-            folder = folder and folder:FindFirstChild(n)
-        end
+        local folder = dig(PlayerGui, { "GameUI", "Menus", "Inventory", "Display", "Pets", "ScrollingFrame", "Pets" })
         if not folder then return nil, 0, false end
-
         local best, bestMult, total = nil, nil, 0
         for _, fr in ipairs(folder:GetChildren()) do
             local tg = fr:FindFirstChild("Toggle")
@@ -445,141 +87,732 @@ local function main()
         return best, total, true
     end
 
-    local function voidCard(order, h)
-        local c = mk("Frame", {
-            LayoutOrder = order,
-            Size = UDim2.new(1, -10, 0, h),
-            BackgroundColor3 = PANEL,
-            BorderSizePixel = 0,
-        }, voidPage, 10)
-        stroke(c, ACCENT, 1.5)
-        return c
+    ----------------------------------------------------
+    -- ESTILO
+    ----------------------------------------------------
+    local ACCENT = CONFIG.ACCENT
+    local BG = Color3.fromRGB(11, 11, 14)
+    local PANEL = Color3.fromRGB(20, 20, 27)
+    local ITEM = Color3.fromRGB(27, 27, 36)
+    local LINE = Color3.fromRGB(46, 46, 58)
+    local TXT = Color3.fromRGB(236, 236, 242)
+    local DIM = Color3.fromRGB(122, 124, 140)
+    local OFFT = Color3.fromRGB(48, 48, 60)
+    local OFFK = Color3.fromRGB(150, 150, 164)
+    local RED = Color3.fromRGB(255, 80, 90)
+
+    local function tween(o, t, props)
+        local tw = TweenService:Create(o, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
+        tw:Play()
+        return tw
     end
 
-    -- Cartão 1: switch
-    local vc1 = voidCard(1, 48)
-    lbl(vc1, "Auto Void", 14, 6, 150, 20, 14, WHITE)
-    local voidStatus = lbl(vc1, "Parado", 14, 26, 170, 16, 11, CYAN)
-    local vTrack = mk("TextButton", {
-        Position = UDim2.new(1, -58, 0, 12),
-        Size = UDim2.new(0, 46, 0, 24),
-        BackgroundColor3 = OFFC,
-        Text = "",
-        AutoButtonColor = false,
-    }, vc1, 12)
-    local vKnob = mk("Frame", {
-        Position = UDim2.new(0, 3, 0, 3),
-        Size = UDim2.new(0, 18, 0, 18),
-        BackgroundColor3 = WHITE,
+    local function mk(class, props, parent, radius)
+        local o = Instance.new(class)
+        for k, v in pairs(props) do o[k] = v end
+        if radius then
+            local c = Instance.new("UICorner")
+            c.CornerRadius = UDim.new(0, radius)
+            c.Parent = o
+        end
+        o.Parent = parent
+        return o
+    end
+
+    local function stroke(o, color, th, transp)
+        local s = Instance.new("UIStroke")
+        s.Color = color
+        s.Thickness = th
+        s.Transparency = transp or 0
+        s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        s.Parent = o
+        return s
+    end
+
+    local function lbl(parent, text, x, y, w, h, size, color, align, font)
+        return mk("TextLabel", {
+            Position = UDim2.new(0, x, 0, y),
+            Size = UDim2.new(0, w, 0, h),
+            BackgroundTransparency = 1,
+            Text = text,
+            TextColor3 = color or TXT,
+            TextSize = size,
+            Font = font or Enum.Font.GothamMedium,
+            TextXAlignment = align or Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, parent)
+    end
+
+    -- barra fina centralizada (usada para desenhar ícones)
+    local function bar(parent, w, h, color, x, y, rot)
+        return mk("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0, x, 0, y),
+            Size = UDim2.new(0, w, 0, h),
+            BackgroundColor3 = color,
+            BorderSizePixel = 0,
+            Rotation = rot or 0,
+        }, parent)
+    end
+
+    local FULL = UDim2.new(1, 0, 1, 0)
+
+    ----------------------------------------------------
+    -- JANELA
+    ----------------------------------------------------
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "ZaroHub"
+    gui.ResetOnSpawn = false
+    gui.DisplayOrder = 999
+    gui.Parent = PlayerGui
+
+    local W, H = 430, 250
+    local main = mk("Frame", {
+        Size = UDim2.new(0, W, 0, H),
+        Position = UDim2.new(0.5, -W / 2, 0.25, 0),
+        BackgroundColor3 = BG,
         BorderSizePixel = 0,
-    }, vTrack, 9)
-    vTrack.MouseButton1Click:Connect(function()
-        voidOn = not voidOn
-        tween(vTrack, 0.2, { BackgroundColor3 = voidOn and GREEN or OFFC })
-        tween(vKnob, 0.2, { Position = voidOn and UDim2.new(0, 25, 0, 3) or UDim2.new(0, 3, 0, 3) })
-        voidStatus.Text = voidOn and "Procurando pet Gold..." or "Parado"
+        Active = true,
+        Draggable = true,
+    }, gui, 12)
+    local mainStroke = stroke(main, LINE, 1)
+
+    -- Fundo (imagem/vídeo opcionais)
+    local bgLayer = mk("Frame", {
+        Size = FULL,
+        BackgroundColor3 = BG,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        ZIndex = 0,
+    }, main, 12)
+    local bgImage = mk("ImageLabel", {
+        Size = FULL,
+        BackgroundTransparency = 1,
+        ScaleType = Enum.ScaleType.Crop,
+        Visible = false,
+        ZIndex = 1,
+    }, bgLayer)
+    local bgVideo = mk("VideoFrame", {
+        Size = FULL,
+        BackgroundTransparency = 1,
+        Looped = true,
+        Volume = 0,
+        Visible = false,
+        ZIndex = 2,
+    }, bgLayer)
+    local bgDim = mk("Frame", {
+        Size = FULL,
+        BackgroundColor3 = BG,
+        BackgroundTransparency = 0,
+        BorderSizePixel = 0,
+        ZIndex = 3,
+    }, bgLayer)
+
+    local function extOf(url, default)
+        local clean = url:gsub("%?.*$", "")
+        return clean:match("%.(%w+)$") or default
+    end
+
+    local function loadAsset(url, fname)
+        if url:match("^rbxasset") then return url end
+        if not (writefile and getcustomasset) then return nil end
+        local ok, res = pcall(function()
+            writefile(fname, game:HttpGet(url))
+            return getcustomasset(fname)
+        end)
+        if ok then return res end
+        return nil
+    end
+
+    local bgThread = task.spawn(function()
+        if CONFIG.BG_VIDEO ~= "" then
+            local a = loadAsset(CONFIG.BG_VIDEO, "zarohub_bg." .. extOf(CONFIG.BG_VIDEO, "webm"))
+            if a and running then
+                bgVideo.Video = a
+                bgVideo.Visible = true
+                bgVideo.Playing = true
+                bgDim.BackgroundTransparency = CONFIG.BG_DIM
+                return
+            end
+        end
+        if CONFIG.BG_IMAGE ~= "" then
+            local a = loadAsset(CONFIG.BG_IMAGE, "zarohub_bg." .. extOf(CONFIG.BG_IMAGE, "png"))
+            if a and running then
+                bgImage.Image = a
+                bgImage.Visible = true
+                bgDim.BackgroundTransparency = CONFIG.BG_DIM
+            end
+        end
     end)
 
-    -- Cartão 2: intervalo
-    local vc2 = voidCard(2, 48)
-    lbl(vc2, "Intervalo", 14, 0, 100, 48, 14, WHITE)
-    local vMinus = btn(vc2, "-", 0, 0, 28, 24, PANEL2, 15)
-    vMinus.Position = UDim2.new(1, -150, 0, 12)
-    local vDelayLabel = lbl(vc2, "2.0s", 0, 0, 70, 24, 13, CYAN, Enum.TextXAlignment.Center)
-    vDelayLabel.Position = UDim2.new(1, -118, 0, 12)
-    local vPlus = btn(vc2, "+", 0, 0, 28, 24, PANEL2, 15)
-    vPlus.Position = UDim2.new(1, -42, 0, 12)
-    local function setVoidInterval(v)
-        voidInterval = math.clamp(math.floor(v * 10 + 0.5) / 10, 0.5, 10)
-        vDelayLabel.Text = string.format("%.1fs", voidInterval)
+    -- Traço de destaque no canto
+    mk("Frame", {
+        Position = UDim2.new(0, 14, 0, 0),
+        Size = UDim2.new(0, 54, 0, 2),
+        BackgroundColor3 = ACCENT,
+        BorderSizePixel = 0,
+        ZIndex = 5,
+    }, main)
+
+    ----------------------------------------------------
+    -- BARRA DE TÍTULO (ícones desenhados)
+    ----------------------------------------------------
+    local function iconButton(x)
+        return mk("TextButton", {
+            Position = UDim2.new(0, x, 0, 6),
+            Size = UDim2.new(0, 28, 0, 28),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 5,
+        }, main)
     end
-    vMinus.MouseButton1Click:Connect(function() setVoidInterval(voidInterval - 0.5) end)
-    vPlus.MouseButton1Click:Connect(function() setVoidInterval(voidInterval + 0.5) end)
 
-    -- Cartão 3: contadores
-    local vc3 = voidCard(3, 54)
-    local goldLabel = lbl(vc3, "Pets Gold disponíveis: -", 14, 6, 270, 20, 12, WHITE)
-    local sentLabel = lbl(vc3, "Enviados para a máquina: 0", 14, 28, 270, 20, 12, WHITE)
+    local menuBtn = iconButton(8)
+    for i = 0, 2 do
+        local b = bar(menuBtn, 14, 2, DIM, 14, 8 + i * 6, 0)
+        b.ZIndex = 6
+    end
 
-    -- Cartão 4: aviso
-    local vc4 = voidCard(4, 70)
-    local info = lbl(vc4, "Envia o pet Gold de menor multiplicador para a máquina Void. Abra o inventário de pets ao menos uma vez para a lista carregar.", 14, 6, 270, 58, 11, DIM)
-    info.TextWrapped = true
-    info.TextYAlignment = Enum.TextYAlignment.Top
-    info.Font = Enum.Font.Gotham
+    local logo = mk("Frame", {
+        Position = UDim2.new(0, 42, 0, 9),
+        Size = UDim2.new(0, 22, 0, 22),
+        BackgroundColor3 = ACCENT,
+        BorderSizePixel = 0,
+        ZIndex = 5,
+    }, main, 5)
+    mk("TextLabel", {
+        Size = FULL,
+        BackgroundTransparency = 1,
+        Text = "Z",
+        TextColor3 = BG,
+        TextSize = 15,
+        Font = Enum.Font.GothamBlack,
+        ZIndex = 6,
+    }, logo)
+
+    local title = mk("TextLabel", {
+        Position = UDim2.new(0, 72, 0, 8),
+        Size = UDim2.new(0, 160, 0, 24),
+        BackgroundTransparency = 1,
+        RichText = true,
+        Text = string.format('%s <font color="rgb(%d,%d,%d)">%s</font>', CONFIG.NAME_A,
+            math.floor(ACCENT.R * 255), math.floor(ACCENT.G * 255), math.floor(ACCENT.B * 255), CONFIG.NAME_B),
+        TextColor3 = TXT,
+        TextSize = 15,
+        Font = Enum.Font.GothamBlack,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 5,
+    }, main)
+
+    local minBtn = iconButton(W - 70)
+    local minBar = bar(minBtn, 12, 2, DIM, 14, 14, 0)
+    minBar.ZIndex = 6
+
+    local closeBtn = iconButton(W - 38)
+    local cx1 = bar(closeBtn, 14, 2, DIM, 14, 14, 45)
+    local cx2 = bar(closeBtn, 14, 2, DIM, 14, 14, -45)
+    cx1.ZIndex = 6
+    cx2.ZIndex = 6
+
+    minBtn.MouseEnter:Connect(function() tween(minBar, 0.15, { BackgroundColor3 = TXT }) end)
+    minBtn.MouseLeave:Connect(function() tween(minBar, 0.2, { BackgroundColor3 = DIM }) end)
+    closeBtn.MouseEnter:Connect(function()
+        tween(cx1, 0.15, { BackgroundColor3 = RED })
+        tween(cx2, 0.15, { BackgroundColor3 = RED })
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        tween(cx1, 0.2, { BackgroundColor3 = DIM })
+        tween(cx2, 0.2, { BackgroundColor3 = DIM })
+    end)
+
+    mk("Frame", {
+        Position = UDim2.new(0, 0, 0, 40),
+        Size = UDim2.new(1, 0, 0, 1),
+        BackgroundColor3 = LINE,
+        BorderSizePixel = 0,
+        ZIndex = 5,
+    }, main)
+
+    ----------------------------------------------------
+    -- MENU LATERAL
+    ----------------------------------------------------
+    local sidebar = mk("Frame", {
+        Position = UDim2.new(0, 8, 0, 48),
+        Size = UDim2.new(0, 94, 0, 194),
+        BackgroundColor3 = PANEL,
+        BackgroundTransparency = 0.12,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        ZIndex = 4,
+    }, main, 10)
+    stroke(sidebar, LINE, 1)
+
+    local indicator = mk("Frame", {
+        Position = UDim2.new(0, 0, 0, 16),
+        Size = UDim2.new(0, 3, 0, 22),
+        BackgroundColor3 = ACCENT,
+        BorderSizePixel = 0,
+        ZIndex = 6,
+    }, sidebar)
+
+    local function tabBtn(text, y)
+        local b = mk("TextButton", {
+            Position = UDim2.new(0, 0, 0, y),
+            Size = UDim2.new(1, 0, 0, 34),
+            BackgroundTransparency = 1,
+            Text = text,
+            TextColor3 = DIM,
+            TextSize = 12,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            AutoButtonColor = false,
+            ZIndex = 5,
+        }, sidebar)
+        mk("UIPadding", { PaddingLeft = UDim.new(0, 16) }, b)
+        return b
+    end
+    local eggsTab = tabBtn("EGGS", 10)
+    local voidTab = tabBtn("VOID", 46)
+    eggsTab.TextColor3 = ACCENT
+
+    local function newPage(visible)
+        local p = mk("ScrollingFrame", {
+            Position = UDim2.new(0, 110, 0, 48),
+            Size = UDim2.new(0, 312, 0, 194),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ScrollBarThickness = 2,
+            ScrollBarImageColor3 = ACCENT,
+            Visible = visible,
+            ZIndex = 4,
+        }, main)
+        local l = Instance.new("UIListLayout")
+        l.Padding = UDim.new(0, 6)
+        l.SortOrder = Enum.SortOrder.LayoutOrder
+        l.Parent = p
+        return p
+    end
+    local eggsPage = newPage(true)
+    local voidPage = newPage(false)
+
+    local sidebarOpen = true
+    local function setSidebar(open)
+        sidebarOpen = open
+        tween(sidebar, 0.25, { Size = UDim2.new(0, open and 94 or 0, 0, 194) })
+        for _, page in ipairs({ eggsPage, voidPage }) do
+            tween(page, 0.25, {
+                Position = UDim2.new(0, open and 110 or 8, 0, 48),
+                Size = UDim2.new(0, open and 312 or 414, 0, 194),
+            })
+        end
+    end
+    menuBtn.MouseButton1Click:Connect(function() setSidebar(not sidebarOpen) end)
+
+    local function selectTab(name)
+        eggsPage.Visible = (name == "Eggs")
+        voidPage.Visible = (name == "Void")
+        tween(indicator, 0.2, { Position = UDim2.new(0, 0, 0, name == "Eggs" and 16 or 52) })
+        tween(eggsTab, 0.2, { TextColor3 = name == "Eggs" and ACCENT or DIM })
+        tween(voidTab, 0.2, { TextColor3 = name == "Void" and ACCENT or DIM })
+    end
+    eggsTab.MouseButton1Click:Connect(function() selectTab("Eggs") end)
+    voidTab.MouseButton1Click:Connect(function() selectTab("Void") end)
+
+    ----------------------------------------------------
+    -- COMPONENTES
+    ----------------------------------------------------
+    local function row(page, order, h)
+        local r = mk("Frame", {
+            LayoutOrder = order,
+            Size = UDim2.new(1, -8, 0, h),
+            BackgroundColor3 = PANEL,
+            BackgroundTransparency = 0.12,
+            BorderSizePixel = 0,
+            ZIndex = 4,
+        }, page, 8)
+        stroke(r, LINE, 1)
+        return r
+    end
+
+    local pillDot -- definido mais abaixo
+    local function updatePill()
+        if pillDot then
+            tween(pillDot, 0.2, { BackgroundColor3 = (autoBuying or voidOn) and ACCENT or OFFT })
+        end
+    end
+
+    local function makeSwitch(parent, y, initial, onChange)
+        local on = initial
+        local track = mk("TextButton", {
+            Position = UDim2.new(1, -56, 0, y),
+            Size = UDim2.new(0, 44, 0, 22),
+            BackgroundColor3 = on and ACCENT or OFFT,
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 6,
+        }, parent, 11)
+        local knob = mk("Frame", {
+            Position = on and UDim2.new(0, 25, 0, 3) or UDim2.new(0, 3, 0, 3),
+            Size = UDim2.new(0, 16, 0, 16),
+            BackgroundColor3 = on and BG or OFFK,
+            BorderSizePixel = 0,
+            ZIndex = 7,
+        }, track, 8)
+        track.MouseButton1Click:Connect(function()
+            on = not on
+            tween(track, 0.18, { BackgroundColor3 = on and ACCENT or OFFT })
+            tween(knob, 0.18, {
+                Position = on and UDim2.new(0, 25, 0, 3) or UDim2.new(0, 3, 0, 3),
+                BackgroundColor3 = on and BG or OFFK,
+            })
+            if onChange then onChange(on) end
+        end)
+    end
+
+    local function makeStepper(parent, y, init, step, lo, hi, fmt, onChange)
+        local value = init
+        local function sbtn(text, xoff)
+            local b = mk("TextButton", {
+                Position = UDim2.new(1, xoff, 0, y),
+                Size = UDim2.new(0, 26, 0, 24),
+                BackgroundColor3 = BG,
+                Text = text,
+                TextColor3 = TXT,
+                TextSize = 15,
+                Font = Enum.Font.GothamBold,
+                AutoButtonColor = false,
+                ZIndex = 6,
+            }, parent, 6)
+            stroke(b, LINE, 1)
+            return b
+        end
+        local minus = sbtn("-", -150)
+        local lab = lbl(parent, string.format(fmt, value), 0, 0, 66, 24, 13, ACCENT, Enum.TextXAlignment.Center, Enum.Font.Code)
+        lab.Position = UDim2.new(1, -120, 0, y)
+        lab.ZIndex = 6
+        local plus = sbtn("+", -48)
+        local function set(v)
+            value = math.clamp(math.floor(v * 10 + 0.5) / 10, lo, hi)
+            lab.Text = string.format(fmt, value)
+            onChange(value)
+        end
+        minus.MouseButton1Click:Connect(function() set(value - step) end)
+        plus.MouseButton1Click:Connect(function() set(value + step) end)
+    end
+
+    local function nameLabel(parent, text)
+        local l = lbl(parent, text, 14, 0, 120, 48, 13, TXT, nil, Enum.Font.GothamBold)
+        l.ZIndex = 6
+        return l
+    end
+
+    local function valueChip(parent, text)
+        local l = lbl(parent, text, 0, 0, 90, 48, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+        l.Position = UDim2.new(1, -104, 0, 0)
+        l.ZIndex = 6
+        return l
+    end
+
+    ----------------------------------------------------
+    -- PÁGINA EGGS
+    ----------------------------------------------------
+    local COLLAPSED_H, EXPANDED_H = 48, 196
+
+    local card = row(eggsPage, 1, COLLAPSED_H)
+    card.ClipsDescendants = true
+
+    local header = mk("TextButton", {
+        Size = UDim2.new(1, 0, 0, COLLAPSED_H),
+        BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
+        ZIndex = 5,
+    }, card)
+    nameLabel(header, "Auto Egg")
+    local selLabel = lbl(header, cleanName(selected), 0, 0, 96, 48, 11, DIM, Enum.TextXAlignment.Right)
+    selLabel.Position = UDim2.new(1, -192, 0, 0)
+    selLabel.ZIndex = 6
+
+    -- Seta desenhada: ^ fechado, v aberto
+    local chevron = mk("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(1, -80, 0, 24),
+        Size = UDim2.new(0, 16, 0, 16),
+        BackgroundTransparency = 1,
+        ZIndex = 6,
+    }, header)
+    bar(chevron, 9, 2, ACCENT, 5, 9, -40).ZIndex = 6
+    bar(chevron, 9, 2, ACCENT, 11, 9, 40).ZIndex = 6
+
+    makeSwitch(card, 13, false, function(on)
+        autoBuying = on
+        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn) and ACCENT or LINE })
+        updatePill()
+    end)
+
+    local drop = mk("Frame", {
+        Position = UDim2.new(0, 0, 0, 52),
+        Size = UDim2.new(1, 0, 0, 140),
+        BackgroundTransparency = 1,
+        Visible = false,
+        ZIndex = 5,
+    }, card)
+
+    local search = mk("TextBox", {
+        Position = UDim2.new(0, 10, 0, 0),
+        Size = UDim2.new(1, -20, 0, 28),
+        BackgroundColor3 = BG,
+        PlaceholderText = "Buscar",
+        PlaceholderColor3 = DIM,
+        Text = "",
+        TextColor3 = TXT,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ClearTextOnFocus = false,
+        ZIndex = 6,
+    }, drop, 6)
+    mk("UIPadding", { PaddingLeft = UDim.new(0, 10) }, search)
+    local searchStroke = stroke(search, LINE, 1)
+    search.Focused:Connect(function() tween(searchStroke, 0.15, { Color = ACCENT }) end)
+    search.FocusLost:Connect(function() tween(searchStroke, 0.2, { Color = LINE }) end)
+
+    local list = mk("ScrollingFrame", {
+        Position = UDim2.new(0, 10, 0, 34),
+        Size = UDim2.new(1, -20, 0, 100),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ScrollBarThickness = 2,
+        ScrollBarImageColor3 = ACCENT,
+        ZIndex = 6,
+    }, drop)
+    local lLayout = Instance.new("UIListLayout")
+    lLayout.Padding = UDim.new(0, 3)
+    lLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    lLayout.Parent = list
+
+    local function refreshList()
+        for _, c in ipairs(list:GetChildren()) do
+            if c:IsA("TextButton") then c:Destroy() end
+        end
+        local f = string.lower(search.Text)
+        for i, raw in ipairs(eggs) do
+            local nm = cleanName(raw)
+            if f == "" or string.find(string.lower(nm), f, 1, true) then
+                local isSel = (raw == selected)
+                local b = mk("TextButton", {
+                    LayoutOrder = i,
+                    Size = UDim2.new(1, -6, 0, 26),
+                    BackgroundColor3 = ITEM,
+                    Text = nm,
+                    TextColor3 = isSel and ACCENT or TXT,
+                    TextSize = 12,
+                    Font = Enum.Font.GothamMedium,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    AutoButtonColor = false,
+                    ZIndex = 7,
+                }, list, 6)
+                mk("UIPadding", { PaddingLeft = UDim.new(0, 12) }, b)
+                if isSel then
+                    mk("Frame", {
+                        Position = UDim2.new(0, -12, 0.5, -7),
+                        Size = UDim2.new(0, 3, 0, 14),
+                        BackgroundColor3 = ACCENT,
+                        BorderSizePixel = 0,
+                        ZIndex = 8,
+                    }, b)
+                end
+                b.MouseButton1Click:Connect(function()
+                    selected = raw
+                    selLabel.Text = nm
+                    refreshList()
+                end)
+            end
+        end
+    end
+    refreshList()
+    search:GetPropertyChangedSignal("Text"):Connect(refreshList)
+
+    local expanded = false
+    header.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        tween(chevron, 0.25, { Rotation = expanded and 180 or 0 })
+        if expanded then
+            drop.Visible = true
+        else
+            task.delay(0.26, function()
+                if running and not expanded then drop.Visible = false end
+            end)
+        end
+        tween(card, 0.25, { Size = UDim2.new(1, -8, 0, expanded and EXPANDED_H or COLLAPSED_H) })
+    end)
+
+    local rDelay = row(eggsPage, 2, 48)
+    nameLabel(rDelay, "Delay")
+    makeStepper(rDelay, 12, delayTime, 0.1, 0.1, 3, "%.1fs", function(v) delayTime = v end)
+
+    local rMulti = row(eggsPage, 3, 48)
+    nameLabel(rMulti, "Multi")
+    makeSwitch(rMulti, 13, true, function(on) multiOpen = on end)
+
+    local rCount = row(eggsPage, 4, 40)
+    local lc = lbl(rCount, "Abertos", 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
+    lc.ZIndex = 6
+    local countLabel = lbl(rCount, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+    countLabel.Position = UDim2.new(1, -104, 0, 0)
+    countLabel.ZIndex = 6
+
+    ----------------------------------------------------
+    -- PÁGINA VOID
+    ----------------------------------------------------
+    local vRow = row(voidPage, 1, 48)
+    nameLabel(vRow, "Auto Void")
+    local voidStatus = lbl(vRow, "", 0, 0, 120, 48, 11, DIM, Enum.TextXAlignment.Right)
+    voidStatus.Position = UDim2.new(1, -184, 0, 0)
+    voidStatus.ZIndex = 6
+    makeSwitch(vRow, 13, false, function(on)
+        voidOn = on
+        voidStatus.Text = on and "buscando" or ""
+        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn) and ACCENT or LINE })
+        updatePill()
+    end)
+
+    local vInt = row(voidPage, 2, 48)
+    nameLabel(vInt, "Intervalo")
+    makeStepper(vInt, 12, voidInterval, 0.5, 0.5, 10, "%.1fs", function(v) voidInterval = v end)
+
+    local vGold = row(voidPage, 3, 40)
+    local lg = lbl(vGold, "Gold", 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
+    lg.ZIndex = 6
+    local goldLabel = lbl(vGold, "-", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+    goldLabel.Position = UDim2.new(1, -104, 0, 0)
+    goldLabel.ZIndex = 6
+
+    local vSent = row(voidPage, 4, 40)
+    local ls = lbl(vSent, "Enviados", 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
+    ls.ZIndex = 6
+    local sentLabel = lbl(vSent, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+    sentLabel.Position = UDim2.new(1, -104, 0, 0)
+    sentLabel.ZIndex = 6
+
+    ----------------------------------------------------
+    -- PAINEL FLUTUANTE (minimizado)
+    ----------------------------------------------------
+    local pill = mk("TextButton", {
+        Size = UDim2.new(0, 96, 0, 34),
+        Position = UDim2.new(0.04, 0, 0.2, 0),
+        BackgroundColor3 = BG,
+        Text = "",
+        AutoButtonColor = false,
+        Visible = false,
+        Active = true,
+        Draggable = true,
+    }, gui, 8)
+    stroke(pill, LINE, 1)
+
+    local mark = mk("Frame", {
+        Size = UDim2.new(0, 34, 1, 0),
+        BackgroundColor3 = ACCENT,
+        BorderSizePixel = 0,
+    }, pill, 8)
+    mk("Frame", {
+        Position = UDim2.new(1, -10, 0, 0),
+        Size = UDim2.new(0, 10, 1, 0),
+        BackgroundColor3 = ACCENT,
+        BorderSizePixel = 0,
+    }, mark)
+    mk("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "Z",
+        TextColor3 = BG,
+        TextSize = 17,
+        Font = Enum.Font.GothamBlack,
+        ZIndex = 3,
+    }, mark)
+    mk("TextLabel", {
+        Position = UDim2.new(0, 42, 0, 0),
+        Size = UDim2.new(0, 36, 1, 0),
+        BackgroundTransparency = 1,
+        Text = CONFIG.NAME_A,
+        TextColor3 = TXT,
+        TextSize = 12,
+        Font = Enum.Font.GothamBlack,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, pill)
+    pillDot = mk("Frame", {
+        Position = UDim2.new(1, -16, 0.5, -4),
+        Size = UDim2.new(0, 8, 0, 8),
+        BackgroundColor3 = OFFT,
+        BorderSizePixel = 0,
+    }, pill, 4)
+
+    minBtn.MouseButton1Click:Connect(function()
+        main.Visible = false
+        pill.Visible = true
+        bgVideo.Playing = false
+    end)
+    pill.MouseButton1Click:Connect(function()
+        main.Visible = true
+        pill.Visible = false
+        if bgVideo.Visible then bgVideo.Playing = true end
+    end)
+
+    ----------------------------------------------------
+    -- LOOPS
+    ----------------------------------------------------
+    local eggLoop = task.spawn(function()
+        while running do
+            if autoBuying then
+                if not eggRemote then
+                    eggRemote = dig(RS, { "Packages", "Knit", "Services", "EggService", "RF", "purchaseEgg" })
+                end
+                if eggRemote then
+                    local ok = pcall(function()
+                        eggRemote:InvokeServer(selected, nil, nil, false, nil, multiOpen and true or nil, nil)
+                    end)
+                    if ok then
+                        count = count + 1
+                        countLabel.Text = tostring(count)
+                    end
+                end
+            end
+            task.wait(delayTime)
+        end
+    end)
 
     local voidLoop = task.spawn(function()
         while running do
             if voidOn then
-                if not voidEvent then voidEvent = findVoidEvent() end
+                if not voidEvent then
+                    voidEvent = dig(RS, { "Packages", "Knit", "Services", "PetVoidService", "RE", "onCraftToVoid" })
+                end
                 local guid, total, found = findGold()
                 if not found then
-                    voidStatus.Text = "Inventário de pets não carregado"
+                    voidStatus.Text = "abra o inventário"
                 elseif not voidEvent then
-                    voidStatus.Text = "Remote da máquina não achado"
+                    voidStatus.Text = "sem remote"
                 else
-                    goldLabel.Text = "Pets Gold disponíveis: " .. total
+                    goldLabel.Text = tostring(total)
                     if guid then
                         local ok = pcall(function() voidEvent:FireServer(guid) end)
                         if ok then
                             sentAt[guid] = os.clock()
                             voidSent = voidSent + 1
-                            sentLabel.Text = "Enviados para a máquina: " .. voidSent
-                            voidStatus.Text = "Enviando Gold..."
+                            sentLabel.Text = tostring(voidSent)
+                            voidStatus.Text = "enviando"
                         end
                     else
-                        voidStatus.Text = "Nenhum Gold livre no momento"
+                        voidStatus.Text = "sem gold"
                     end
                 end
             end
             task.wait(voidInterval)
-        end
-    end)
-
-    ----------------------------------------------------
-    -- MINIMIZAR (botão flutuante)
-    ----------------------------------------------------
-    local orb = mk("TextButton", {
-        Size = UDim2.new(0, 48, 0, 48),
-        Position = UDim2.new(0.05, 0, 0.2, 0),
-        BackgroundColor3 = ACCENT,
-        Text = "🥚",
-        TextSize = 22,
-        TextColor3 = WHITE,
-        AutoButtonColor = false,
-        Visible = false,
-        Active = true,
-        Draggable = true,
-    }, gui, 24)
-    stroke(orb, CYAN, 2)
-
-    minBtn.MouseButton1Click:Connect(function()
-        main.Visible = false
-        orb.Visible = true
-    end)
-    orb.MouseButton1Click:Connect(function()
-        main.Visible = true
-        orb.Visible = false
-    end)
-
-    ----------------------------------------------------
-    -- LOOP DE COMPRA
-    ----------------------------------------------------
-    local loop = task.spawn(function()
-        while running do
-            if autoBuying then
-                if not remote then remote = findRemote() end
-                if remote then
-                    local ok = pcall(function()
-                        remote:InvokeServer(selected, nil, nil, false, nil, multiOpen and true or nil, nil)
-                    end)
-                    if ok then
-                        count = count + 1
-                        countLabel.Text = "Pedidos enviados: " .. count
-                    end
-                end
-            end
-            task.wait(delayTime)
         end
     end)
 
@@ -589,18 +822,21 @@ local function main()
     local function shutdown()
         running = false
         autoBuying = false
-        pcall(task.cancel, loop)
+        voidOn = false
+        pcall(task.cancel, eggLoop)
         pcall(task.cancel, voidLoop)
-        ENV.__AutoEggMenu = nil
+        pcall(task.cancel, bgThread)
+        pcall(function() bgVideo.Playing = false end)
+        ENV.__ZaroHub = nil
         gui:Destroy()
     end
-    ENV.__AutoEggMenu = shutdown
+    ENV.__ZaroHub = shutdown
     closeBtn.MouseButton1Click:Connect(shutdown)
 end
 
 local ok, err = pcall(main)
 if not ok then
-    warn("[AutoEgg] ERRO: " .. tostring(err))
+    warn("[ZaroHub] ERRO: " .. tostring(err))
     local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
     local g = Instance.new("ScreenGui")
     g.ResetOnSpawn = false
