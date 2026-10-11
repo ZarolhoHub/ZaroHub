@@ -374,6 +374,8 @@ local function main()
     end
     local eggsTab = tabBtn("EGGS", 10)
     local voidTab = tabBtn("VOID", 46)
+    local tpTab = tabBtn("TELEPORT", 82)
+    local qTab = tabBtn("QUESTS", 118)
     eggsTab.TextColor3 = ACCENT
 
     local function newPage(visible)
@@ -397,12 +399,14 @@ local function main()
     end
     local eggsPage = newPage(true)
     local voidPage = newPage(false)
+    local tpPage = newPage(false)
+    local qPage = newPage(false)
 
     local sidebarOpen = true
     local function setSidebar(open)
         sidebarOpen = open
         tween(sidebar, 0.25, { Size = UDim2.new(0, open and 94 or 0, 0, 194) })
-        for _, page in ipairs({ eggsPage, voidPage }) do
+        for _, page in ipairs({ eggsPage, voidPage, tpPage, qPage }) do
             tween(page, 0.25, {
                 Position = UDim2.new(0, open and 110 or 8, 0, 48),
                 Size = UDim2.new(0, open and 312 or 414, 0, 194),
@@ -414,12 +418,19 @@ local function main()
     local function selectTab(name)
         eggsPage.Visible = (name == "Eggs")
         voidPage.Visible = (name == "Void")
-        tween(indicator, 0.2, { Position = UDim2.new(0, 0, 0, name == "Eggs" and 16 or 52) })
+        tpPage.Visible = (name == "Teleport")
+        qPage.Visible = (name == "Quests")
+        local ys = { Eggs = 16, Void = 52, Teleport = 88, Quests = 124 }
+        tween(indicator, 0.2, { Position = UDim2.new(0, 0, 0, ys[name]) })
         tween(eggsTab, 0.2, { TextColor3 = name == "Eggs" and ACCENT or DIM })
         tween(voidTab, 0.2, { TextColor3 = name == "Void" and ACCENT or DIM })
+        tween(tpTab, 0.2, { TextColor3 = name == "Teleport" and ACCENT or DIM })
+        tween(qTab, 0.2, { TextColor3 = name == "Quests" and ACCENT or DIM })
     end
     eggsTab.MouseButton1Click:Connect(function() selectTab("Eggs") end)
     voidTab.MouseButton1Click:Connect(function() selectTab("Void") end)
+    tpTab.MouseButton1Click:Connect(function() selectTab("Teleport") end)
+    qTab.MouseButton1Click:Connect(function() selectTab("Quests") end)
 
     ----------------------------------------------------
     -- COMPONENTES
@@ -701,6 +712,300 @@ local function main()
     sentLabel.ZIndex = 6
 
     ----------------------------------------------------
+    -- PÁGINA TELEPORT
+    ----------------------------------------------------
+    local zones = {}
+    local selectedZone = nil
+    local tpRemote = dig(RS, { "Packages", "Knit", "Services", "ZoneService", "RE", "teleport" })
+    local SPAWN_PATH = { "Interactables", "Teleports", "Locations", "Spawn" }
+
+    local function spawnOf(name)
+        local zf = workspace:FindFirstChild("Zones")
+        local z = zf and zf:FindFirstChild(name)
+        return dig(z, SPAWN_PATH)
+    end
+
+    local function scanZones()
+        zones = {}
+        local zf = workspace:FindFirstChild("Zones")
+        if zf then
+            for _, z in ipairs(zf:GetChildren()) do
+                if dig(z, SPAWN_PATH) then table.insert(zones, z.Name) end
+            end
+        end
+        table.sort(zones, function(a, b)
+            local na, nb = tonumber(a), tonumber(b)
+            if na and nb then return na < nb end
+            if na then return true end
+            if nb then return false end
+            return a < b
+        end)
+        if not selectedZone or not table.find(zones, selectedZone) then
+            selectedZone = zones[1]
+        end
+    end
+
+    local function zoneLabel(n)
+        if tonumber(n) then return "Zona " .. n end
+        return n
+    end
+
+    local tpCard = row(tpPage, 1, COLLAPSED_H)
+    tpCard.ClipsDescendants = true
+
+    local tpHeader = mk("TextButton", {
+        Size = UDim2.new(1, 0, 0, COLLAPSED_H),
+        BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
+        ZIndex = 5,
+    }, tpCard)
+    nameLabel(tpHeader, "Teleporte")
+    local zSel = lbl(tpHeader, "-", 0, 0, 96, 48, 11, DIM, Enum.TextXAlignment.Right)
+    zSel.Position = UDim2.new(1, -192, 0, 0)
+    zSel.ZIndex = 6
+
+    local tpChevron = mk("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(1, -80, 0, 24),
+        Size = UDim2.new(0, 16, 0, 16),
+        BackgroundTransparency = 1,
+        ZIndex = 6,
+    }, tpHeader)
+    bar(tpChevron, 9, 2, ACCENT, 5, 9, -40).ZIndex = 6
+    bar(tpChevron, 9, 2, ACCENT, 11, 9, 40).ZIndex = 6
+
+    local goBtn = mk("TextButton", {
+        Position = UDim2.new(1, -56, 0, 13),
+        Size = UDim2.new(0, 44, 0, 22),
+        BackgroundColor3 = ACCENT,
+        Text = "IR",
+        TextColor3 = BG,
+        TextSize = 12,
+        Font = Enum.Font.GothamBlack,
+        AutoButtonColor = false,
+        ZIndex = 6,
+    }, tpCard, 6)
+
+    local tpDrop = mk("Frame", {
+        Position = UDim2.new(0, 0, 0, 52),
+        Size = UDim2.new(1, 0, 0, 140),
+        BackgroundTransparency = 1,
+        Visible = false,
+        ZIndex = 5,
+    }, tpCard)
+
+    local tpSearch = mk("TextBox", {
+        Position = UDim2.new(0, 10, 0, 0),
+        Size = UDim2.new(1, -20, 0, 28),
+        BackgroundColor3 = BG,
+        PlaceholderText = "Buscar",
+        PlaceholderColor3 = DIM,
+        Text = "",
+        TextColor3 = TXT,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ClearTextOnFocus = false,
+        ZIndex = 6,
+    }, tpDrop, 6)
+    mk("UIPadding", { PaddingLeft = UDim.new(0, 10) }, tpSearch)
+    local tpSearchStroke = stroke(tpSearch, LINE, 1)
+    tpSearch.Focused:Connect(function() tween(tpSearchStroke, 0.15, { Color = ACCENT }) end)
+    tpSearch.FocusLost:Connect(function() tween(tpSearchStroke, 0.2, { Color = LINE }) end)
+
+    local tpList = mk("ScrollingFrame", {
+        Position = UDim2.new(0, 10, 0, 34),
+        Size = UDim2.new(1, -20, 0, 100),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ScrollBarThickness = 2,
+        ScrollBarImageColor3 = ACCENT,
+        ZIndex = 6,
+    }, tpDrop)
+    local tpLayout = Instance.new("UIListLayout")
+    tpLayout.Padding = UDim.new(0, 3)
+    tpLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    tpLayout.Parent = tpList
+
+    local function refreshZoneList()
+        for _, c in ipairs(tpList:GetChildren()) do
+            if c:IsA("TextButton") then c:Destroy() end
+        end
+        zSel.Text = selectedZone and zoneLabel(selectedZone) or "-"
+        local f = string.lower(tpSearch.Text)
+        for i, name in ipairs(zones) do
+            local label = zoneLabel(name)
+            if f == "" or string.find(string.lower(label), f, 1, true) then
+                local isSel = (name == selectedZone)
+                local b = mk("TextButton", {
+                    LayoutOrder = i,
+                    Size = UDim2.new(1, -6, 0, 26),
+                    BackgroundColor3 = ITEM,
+                    Text = label,
+                    TextColor3 = isSel and ACCENT or TXT,
+                    TextSize = 12,
+                    Font = Enum.Font.GothamMedium,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    AutoButtonColor = false,
+                    ZIndex = 7,
+                }, tpList, 6)
+                mk("UIPadding", { PaddingLeft = UDim.new(0, 12) }, b)
+                if isSel then
+                    mk("Frame", {
+                        Position = UDim2.new(0, -12, 0.5, -7),
+                        Size = UDim2.new(0, 3, 0, 14),
+                        BackgroundColor3 = ACCENT,
+                        BorderSizePixel = 0,
+                        ZIndex = 8,
+                    }, b)
+                end
+                b.MouseButton1Click:Connect(function()
+                    selectedZone = name
+                    refreshZoneList()
+                end)
+            end
+        end
+    end
+    scanZones()
+    refreshZoneList()
+    tpSearch:GetPropertyChangedSignal("Text"):Connect(refreshZoneList)
+
+    local tpExpanded = false
+    tpHeader.MouseButton1Click:Connect(function()
+        tpExpanded = not tpExpanded
+        tween(tpChevron, 0.25, { Rotation = tpExpanded and 180 or 0 })
+        if tpExpanded then
+            scanZones()
+            refreshZoneList()
+            tpDrop.Visible = true
+        else
+            task.delay(0.26, function()
+                if running and not tpExpanded then tpDrop.Visible = false end
+            end)
+        end
+        tween(tpCard, 0.25, { Size = UDim2.new(1, -8, 0, tpExpanded and EXPANDED_H or COLLAPSED_H) })
+    end)
+
+    local function flashGo(text)
+        goBtn.Text = text
+        task.delay(0.8, function()
+            if running then goBtn.Text = "IR" end
+        end)
+    end
+
+    goBtn.MouseButton1Click:Connect(function()
+        if not selectedZone then scanZones() end
+        local sp = selectedZone and spawnOf(selectedZone)
+        if not sp then
+            scanZones()
+            refreshZoneList()
+            flashGo("X")
+            return
+        end
+        if not tpRemote then
+            tpRemote = dig(RS, { "Packages", "Knit", "Services", "ZoneService", "RE", "teleport" })
+        end
+        if tpRemote then
+            local ok = pcall(function() tpRemote:FireServer(sp) end)
+            flashGo(ok and "OK" or "X")
+        else
+            flashGo("X")
+        end
+    end)
+
+    ----------------------------------------------------
+    -- PÁGINA QUESTS (Medal Merchant)
+    ----------------------------------------------------
+    local questSlot = 1
+    local autoClaim = false
+    local qThreads = {}
+
+    local function questRemote(name)
+        return dig(RS, { "Packages", "Knit", "Services", "MedalMerchantQuestService", "RF", name })
+    end
+
+    local function actionButton(parent)
+        return mk("TextButton", {
+            Position = UDim2.new(1, -56, 0, 13),
+            Size = UDim2.new(0, 44, 0, 22),
+            BackgroundColor3 = ACCENT,
+            Text = "GO",
+            TextColor3 = BG,
+            TextSize = 11,
+            Font = Enum.Font.GothamBlack,
+            AutoButtonColor = false,
+            ZIndex = 6,
+        }, parent, 6)
+    end
+
+    -- chama o remote e mostra o retorno no próprio botão (OK, NAO, X ou o valor)
+    local function callQuest(btn, name, ...)
+        local rem = questRemote(name)
+        if not rem then
+            btn.Text = "X"
+            task.delay(1.2, function() if running then btn.Text = "GO" end end)
+            return
+        end
+        local args = table.pack(...)
+        local th = task.spawn(function()
+            local ok, res = pcall(function()
+                return rem:InvokeServer(table.unpack(args, 1, args.n))
+            end)
+            local txt
+            if not ok then
+                txt = "X"
+            elseif res == nil or res == true then
+                txt = "OK"
+            elseif res == false then
+                txt = "NAO"
+            else
+                txt = string.sub(tostring(res), 1, 4)
+            end
+            if running then
+                btn.Text = txt
+                task.delay(1.5, function() if running then btn.Text = "GO" end end)
+            end
+        end)
+        table.insert(qThreads, th)
+    end
+
+    local qSlotRow = row(qPage, 1, 48)
+    nameLabel(qSlotRow, "Quest")
+    makeStepper(qSlotRow, 12, questSlot, 1, 1, 4, "%.0f", function(v) questSlot = math.floor(v + 0.5) end)
+
+    local qAccept = row(qPage, 2, 48)
+    nameLabel(qAccept, "Aceitar")
+    local acceptBtn = actionButton(qAccept)
+    acceptBtn.MouseButton1Click:Connect(function() callQuest(acceptBtn, "AcceptQuest", questSlot) end)
+
+    local qClaim = row(qPage, 3, 48)
+    nameLabel(qClaim, "Coletar")
+    local claimBtn = actionButton(qClaim)
+    claimBtn.MouseButton1Click:Connect(function() callQuest(claimBtn, "ClaimCompletedQuest") end)
+
+    local qAbandon = row(qPage, 4, 48)
+    nameLabel(qAbandon, "Abandonar")
+    local abandonBtn = actionButton(qAbandon)
+    abandonBtn.MouseButton1Click:Connect(function() callQuest(abandonBtn, "AbandonQuest") end)
+
+    local qAuto = row(qPage, 5, 48)
+    nameLabel(qAuto, "Auto Coletar")
+    makeSwitch(qAuto, 13, false, function(on) autoClaim = on end)
+
+    local claimLoop = task.spawn(function()
+        while running do
+            if autoClaim then
+                local rem = questRemote("ClaimCompletedQuest")
+                if rem then pcall(function() rem:InvokeServer() end) end
+            end
+            task.wait(5)
+        end
+    end)
+
+    ----------------------------------------------------
     -- PAINEL FLUTUANTE (minimizado)
     ----------------------------------------------------
     local pill = mk("TextButton", {
@@ -826,6 +1131,8 @@ local function main()
         pcall(task.cancel, eggLoop)
         pcall(task.cancel, voidLoop)
         pcall(task.cancel, bgThread)
+        pcall(task.cancel, claimLoop)
+        for _, th in ipairs(qThreads) do pcall(task.cancel, th) end
         pcall(function() bgVideo.Playing = false end)
         ENV.__ZaroHub = nil
         gui:Destroy()
