@@ -6,7 +6,7 @@ local CONFIG = {
     NAME_B = "HUB",
     ACCENT = Color3.fromRGB(190, 255, 60),
     BG_IMAGE = "", -- "rbxassetid://123" ou link direto .png/.jpg
-    BG_VIDEO = "", -- link direto .webm (mais leve) ou .mp4
+    BG_VIDEO = "https://raw.githubusercontent.com/ZarolhoHub/ZaroHub/main/fundo.webm", -- link direto .webm; "" desliga
     BG_DIM = 0.45, -- escurecimento do fundo (0 = sem escurecer)
 }
 
@@ -27,6 +27,7 @@ local function main()
     local count = 0
     local multiOpen = true
 
+    local auraOn = false
     local voidOn = false
     local voidInterval = 2
     local voidSent = 0
@@ -376,6 +377,7 @@ local function main()
     local voidTab = tabBtn("VOID", 46)
     local tpTab = tabBtn("TELEPORT", 82)
     local qTab = tabBtn("QUESTS", 118)
+    local aTab = tabBtn("AURA", 154)
     eggsTab.TextColor3 = ACCENT
 
     local function newPage(visible)
@@ -401,12 +403,13 @@ local function main()
     local voidPage = newPage(false)
     local tpPage = newPage(false)
     local qPage = newPage(false)
+    local aPage = newPage(false)
 
     local sidebarOpen = true
     local function setSidebar(open)
         sidebarOpen = open
         tween(sidebar, 0.25, { Size = UDim2.new(0, open and 94 or 0, 0, 194) })
-        for _, page in ipairs({ eggsPage, voidPage, tpPage, qPage }) do
+        for _, page in ipairs({ eggsPage, voidPage, tpPage, qPage, aPage }) do
             tween(page, 0.25, {
                 Position = UDim2.new(0, open and 110 or 8, 0, 48),
                 Size = UDim2.new(0, open and 312 or 414, 0, 194),
@@ -420,17 +423,20 @@ local function main()
         voidPage.Visible = (name == "Void")
         tpPage.Visible = (name == "Teleport")
         qPage.Visible = (name == "Quests")
-        local ys = { Eggs = 16, Void = 52, Teleport = 88, Quests = 124 }
+        aPage.Visible = (name == "Aura")
+        local ys = { Eggs = 16, Void = 52, Teleport = 88, Quests = 124, Aura = 160 }
         tween(indicator, 0.2, { Position = UDim2.new(0, 0, 0, ys[name]) })
         tween(eggsTab, 0.2, { TextColor3 = name == "Eggs" and ACCENT or DIM })
         tween(voidTab, 0.2, { TextColor3 = name == "Void" and ACCENT or DIM })
         tween(tpTab, 0.2, { TextColor3 = name == "Teleport" and ACCENT or DIM })
         tween(qTab, 0.2, { TextColor3 = name == "Quests" and ACCENT or DIM })
+        tween(aTab, 0.2, { TextColor3 = name == "Aura" and ACCENT or DIM })
     end
     eggsTab.MouseButton1Click:Connect(function() selectTab("Eggs") end)
     voidTab.MouseButton1Click:Connect(function() selectTab("Void") end)
     tpTab.MouseButton1Click:Connect(function() selectTab("Teleport") end)
     qTab.MouseButton1Click:Connect(function() selectTab("Quests") end)
+    aTab.MouseButton1Click:Connect(function() selectTab("Aura") end)
 
     ----------------------------------------------------
     -- COMPONENTES
@@ -451,7 +457,7 @@ local function main()
     local pillDot -- definido mais abaixo
     local function updatePill()
         if pillDot then
-            tween(pillDot, 0.2, { BackgroundColor3 = (autoBuying or voidOn) and ACCENT or OFFT })
+            tween(pillDot, 0.2, { BackgroundColor3 = (autoBuying or voidOn or auraOn) and ACCENT or OFFT })
         end
     end
 
@@ -560,7 +566,7 @@ local function main()
 
     makeSwitch(card, 13, false, function(on)
         autoBuying = on
-        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn) and ACCENT or LINE })
+        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn) and ACCENT or LINE })
         updatePill()
     end)
 
@@ -689,7 +695,7 @@ local function main()
     makeSwitch(vRow, 13, false, function(on)
         voidOn = on
         voidStatus.Text = on and "buscando" or ""
-        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn) and ACCENT or LINE })
+        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn) and ACCENT or LINE })
         updatePill()
     end)
 
@@ -1006,6 +1012,47 @@ local function main()
     end)
 
     ----------------------------------------------------
+    -- PÁGINA AURA
+    ----------------------------------------------------
+    local auraInterval = 1
+    local auraCount = 0
+
+    local aRow = row(aPage, 1, 48)
+    nameLabel(aRow, "Auto Roll")
+    makeSwitch(aRow, 13, false, function(on)
+        auraOn = on
+        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn) and ACCENT or LINE })
+        updatePill()
+    end)
+
+    local aInt = row(aPage, 2, 48)
+    nameLabel(aInt, "Intervalo")
+    makeStepper(aInt, 12, auraInterval, 0.1, 0.1, 10, "%.1fs", function(v) auraInterval = v end)
+
+    local aCount = row(aPage, 3, 40)
+    local lac = lbl(aCount, "Rolls", 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
+    lac.ZIndex = 6
+    local auraCountLabel = lbl(aCount, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+    auraCountLabel.Position = UDim2.new(1, -104, 0, 0)
+    auraCountLabel.ZIndex = 6
+
+    local auraLoop = task.spawn(function()
+        while running do
+            if auraOn then
+                local rem = dig(RS, { "Packages", "Knit", "Services", "AuraService", "RF", "Roll" })
+                if rem then
+                    local ok = pcall(function() rem:InvokeServer() end)
+                    if ok then
+                        auraCount = auraCount + 1
+                        auraCountLabel.Text = tostring(auraCount)
+                    end
+                end
+            end
+            task.wait(auraInterval)
+        end
+    end)
+
+    ----------------------------------------------------
     -- PAINEL FLUTUANTE (minimizado)
     ----------------------------------------------------
     local pill = mk("TextButton", {
@@ -1128,10 +1175,12 @@ local function main()
         running = false
         autoBuying = false
         voidOn = false
+        auraOn = false
         pcall(task.cancel, eggLoop)
         pcall(task.cancel, voidLoop)
         pcall(task.cancel, bgThread)
         pcall(task.cancel, claimLoop)
+        pcall(task.cancel, auraLoop)
         for _, th in ipairs(qThreads) do pcall(task.cancel, th) end
         pcall(function() bgVideo.Playing = false end)
         ENV.__ZaroHub = nil
