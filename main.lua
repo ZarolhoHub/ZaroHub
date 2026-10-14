@@ -28,6 +28,7 @@ local function main()
     local multiOpen = true
 
     local auraOn = false
+    local fightOn = false
     local voidOn = false
     local voidInterval = 2
     local voidSent = 0
@@ -349,36 +350,23 @@ local function main()
     }, main, 10)
     stroke(sidebar, LINE, 1)
 
+    local tabsScroll = mk("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ScrollBarThickness = 0,
+        ZIndex = 5,
+    }, sidebar)
+
     local indicator = mk("Frame", {
-        Position = UDim2.new(0, 0, 0, 16),
+        Position = UDim2.new(0, 0, 0, 11),
         Size = UDim2.new(0, 3, 0, 22),
         BackgroundColor3 = ACCENT,
         BorderSizePixel = 0,
         ZIndex = 6,
-    }, sidebar)
-
-    local function tabBtn(text, y)
-        local b = mk("TextButton", {
-            Position = UDim2.new(0, 0, 0, y),
-            Size = UDim2.new(1, 0, 0, 34),
-            BackgroundTransparency = 1,
-            Text = text,
-            TextColor3 = DIM,
-            TextSize = 12,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            AutoButtonColor = false,
-            ZIndex = 5,
-        }, sidebar)
-        mk("UIPadding", { PaddingLeft = UDim.new(0, 16) }, b)
-        return b
-    end
-    local eggsTab = tabBtn("EGGS", 10)
-    local voidTab = tabBtn("VOID", 46)
-    local tpTab = tabBtn("TELEPORT", 82)
-    local qTab = tabBtn("QUESTS", 118)
-    local aTab = tabBtn("AURA", 154)
-    eggsTab.TextColor3 = ACCENT
+    }, tabsScroll)
 
     local function newPage(visible)
         local p = mk("ScrollingFrame", {
@@ -399,17 +387,42 @@ local function main()
         l.Parent = p
         return p
     end
-    local eggsPage = newPage(true)
-    local voidPage = newPage(false)
-    local tpPage = newPage(false)
-    local qPage = newPage(false)
-    local aPage = newPage(false)
+
+    local pages, tabBtns, tabOrder = {}, {}, {}
+    local function addTab(key, text)
+        table.insert(tabOrder, key)
+        local idx = #tabOrder
+        local b = mk("TextButton", {
+            Position = UDim2.new(0, 0, 0, 6 + (idx - 1) * 32),
+            Size = UDim2.new(1, 0, 0, 32),
+            BackgroundTransparency = 1,
+            Text = text,
+            TextColor3 = DIM,
+            TextSize = 12,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            AutoButtonColor = false,
+            ZIndex = 5,
+        }, tabsScroll)
+        mk("UIPadding", { PaddingLeft = UDim.new(0, 16) }, b)
+        tabBtns[key] = b
+        pages[key] = newPage(idx == 1)
+        return pages[key]
+    end
+
+    local eggsPage = addTab("Eggs", "EGGS")
+    local voidPage = addTab("Void", "VOID")
+    local tpPage = addTab("Teleport", "TELEPORT")
+    local qPage = addTab("Quests", "QUESTS")
+    local aPage = addTab("Aura", "AURA")
+    local lPage = addTab("Luta", "LUTA")
+    tabBtns.Eggs.TextColor3 = ACCENT
 
     local sidebarOpen = true
     local function setSidebar(open)
         sidebarOpen = open
         tween(sidebar, 0.25, { Size = UDim2.new(0, open and 94 or 0, 0, 194) })
-        for _, page in ipairs({ eggsPage, voidPage, tpPage, qPage, aPage }) do
+        for _, page in pairs(pages) do
             tween(page, 0.25, {
                 Position = UDim2.new(0, open and 110 or 8, 0, 48),
                 Size = UDim2.new(0, open and 312 or 414, 0, 194),
@@ -419,24 +432,16 @@ local function main()
     menuBtn.MouseButton1Click:Connect(function() setSidebar(not sidebarOpen) end)
 
     local function selectTab(name)
-        eggsPage.Visible = (name == "Eggs")
-        voidPage.Visible = (name == "Void")
-        tpPage.Visible = (name == "Teleport")
-        qPage.Visible = (name == "Quests")
-        aPage.Visible = (name == "Aura")
-        local ys = { Eggs = 16, Void = 52, Teleport = 88, Quests = 124, Aura = 160 }
-        tween(indicator, 0.2, { Position = UDim2.new(0, 0, 0, ys[name]) })
-        tween(eggsTab, 0.2, { TextColor3 = name == "Eggs" and ACCENT or DIM })
-        tween(voidTab, 0.2, { TextColor3 = name == "Void" and ACCENT or DIM })
-        tween(tpTab, 0.2, { TextColor3 = name == "Teleport" and ACCENT or DIM })
-        tween(qTab, 0.2, { TextColor3 = name == "Quests" and ACCENT or DIM })
-        tween(aTab, 0.2, { TextColor3 = name == "Aura" and ACCENT or DIM })
+        for key, page in pairs(pages) do
+            page.Visible = (key == name)
+            tween(tabBtns[key], 0.2, { TextColor3 = key == name and ACCENT or DIM })
+        end
+        local idx = table.find(tabOrder, name) or 1
+        tween(indicator, 0.2, { Position = UDim2.new(0, 0, 0, 11 + (idx - 1) * 32) })
     end
-    eggsTab.MouseButton1Click:Connect(function() selectTab("Eggs") end)
-    voidTab.MouseButton1Click:Connect(function() selectTab("Void") end)
-    tpTab.MouseButton1Click:Connect(function() selectTab("Teleport") end)
-    qTab.MouseButton1Click:Connect(function() selectTab("Quests") end)
-    aTab.MouseButton1Click:Connect(function() selectTab("Aura") end)
+    for key, b in pairs(tabBtns) do
+        b.MouseButton1Click:Connect(function() selectTab(key) end)
+    end
 
     ----------------------------------------------------
     -- COMPONENTES
@@ -457,7 +462,7 @@ local function main()
     local pillDot -- definido mais abaixo
     local function updatePill()
         if pillDot then
-            tween(pillDot, 0.2, { BackgroundColor3 = (autoBuying or voidOn or auraOn) and ACCENT or OFFT })
+            tween(pillDot, 0.2, { BackgroundColor3 = (autoBuying or voidOn or auraOn or fightOn) and ACCENT or OFFT })
         end
     end
 
@@ -566,7 +571,7 @@ local function main()
 
     makeSwitch(card, 13, false, function(on)
         autoBuying = on
-        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn) and ACCENT or LINE })
+        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn or fightOn) and ACCENT or LINE })
         updatePill()
     end)
 
@@ -695,7 +700,7 @@ local function main()
     makeSwitch(vRow, 13, false, function(on)
         voidOn = on
         voidStatus.Text = on and "buscando" or ""
-        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn) and ACCENT or LINE })
+        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn or fightOn) and ACCENT or LINE })
         updatePill()
     end)
 
@@ -720,6 +725,7 @@ local function main()
     ----------------------------------------------------
     -- PÁGINA TELEPORT
     ----------------------------------------------------
+    do
     local zones = {}
     local selectedZone = nil
     local tpRemote = dig(RS, { "Packages", "Knit", "Services", "ZoneService", "RE", "teleport" })
@@ -922,12 +928,15 @@ local function main()
         end
     end)
 
+    end
+
+    local claimLoop, qThreads = nil, {}
     ----------------------------------------------------
     -- PÁGINA QUESTS (Medal Merchant)
     ----------------------------------------------------
+    do
     local questSlot = 1
     local autoClaim = false
-    local qThreads = {}
 
     local function questRemote(name)
         return dig(RS, { "Packages", "Knit", "Services", "MedalMerchantQuestService", "RF", name })
@@ -1001,7 +1010,7 @@ local function main()
     nameLabel(qAuto, "Auto Coletar")
     makeSwitch(qAuto, 13, false, function(on) autoClaim = on end)
 
-    local claimLoop = task.spawn(function()
+    claimLoop = task.spawn(function()
         while running do
             if autoClaim then
                 local rem = questRemote("ClaimCompletedQuest")
@@ -1011,9 +1020,13 @@ local function main()
         end
     end)
 
+    end
+
+    local auraLoop
     ----------------------------------------------------
     -- PÁGINA AURA
     ----------------------------------------------------
+    do
     local auraInterval = 1
     local auraCount = 0
 
@@ -1021,7 +1034,7 @@ local function main()
     nameLabel(aRow, "Auto Roll")
     makeSwitch(aRow, 13, false, function(on)
         auraOn = on
-        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn) and ACCENT or LINE })
+        tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn or fightOn) and ACCENT or LINE })
         updatePill()
     end)
 
@@ -1036,7 +1049,7 @@ local function main()
     auraCountLabel.Position = UDim2.new(1, -104, 0, 0)
     auraCountLabel.ZIndex = 6
 
-    local auraLoop = task.spawn(function()
+    auraLoop = task.spawn(function()
         while running do
             if auraOn then
                 local rem = dig(RS, { "Packages", "Knit", "Services", "AuraService", "RF", "Roll" })
@@ -1051,6 +1064,296 @@ local function main()
             task.wait(auraInterval)
         end
     end)
+
+    end
+
+    ----------------------------------------------------
+    -- PÁGINA LUTA (ArmWrestle)
+    ----------------------------------------------------
+    local fightLoop
+    local fightConns, fightThreads = {}, {}
+    do
+        local critOn = false
+        local clickInterval = 0.2
+        local fights = 0
+        local crits = 0
+        local fighting = false
+        local curGen = 1
+        local fightStartedAt = 0
+        local fighters = {}
+        local selFighter = nil
+        local UUID_PAT = "^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$"
+        local FIGHT_H = 166
+
+        local function awRemote(kind, name)
+            return dig(RS, { "Packages", "Knit", "Services", "ArmWrestleService", kind, name })
+        end
+
+        local function scanFighters()
+            local prev = selFighter and (selFighter.zone .. "/" .. selFighter.npc)
+            fighters = {}
+            local root = dig(workspace, { "GameObjects", "ArmWrestling" })
+            if root then
+                for _, zf in ipairs(root:GetChildren()) do
+                    local npcs = zf:FindFirstChild("NPC")
+                    if npcs then
+                        for _, n in ipairs(npcs:GetChildren()) do
+                            table.insert(fighters, { zone = zf.Name, npc = n.Name })
+                        end
+                    end
+                end
+            end
+            if #fighters == 0 then
+                fighters = { { zone = "SumoStairway", npc = "BellyBrawler" } }
+            end
+            table.sort(fighters, function(a, b)
+                if a.zone ~= b.zone then return a.zone < b.zone end
+                return a.npc < b.npc
+            end)
+            local pick = nil
+            for _, f in ipairs(fighters) do
+                if prev and (f.zone .. "/" .. f.npc) == prev then pick = f end
+            end
+            if not pick then
+                for _, f in ipairs(fighters) do
+                    if f.npc == "BellyBrawler" then pick = f end
+                end
+            end
+            selFighter = pick or fighters[1]
+        end
+
+        -- Cartão: Auto Luta + seletor de boss
+        local fCard = row(lPage, 1, COLLAPSED_H)
+        fCard.ClipsDescendants = true
+        local fHeader = mk("TextButton", {
+            Size = UDim2.new(1, 0, 0, COLLAPSED_H),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 5,
+        }, fCard)
+        nameLabel(fHeader, "Auto Luta")
+        local fSel = lbl(fHeader, "-", 0, 0, 96, 48, 11, DIM, Enum.TextXAlignment.Right)
+        fSel.Position = UDim2.new(1, -192, 0, 0)
+        fSel.ZIndex = 6
+        local fChev = mk("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(1, -80, 0, 24),
+            Size = UDim2.new(0, 16, 0, 16),
+            BackgroundTransparency = 1,
+            ZIndex = 6,
+        }, fHeader)
+        bar(fChev, 9, 2, ACCENT, 5, 9, -40).ZIndex = 6
+        bar(fChev, 9, 2, ACCENT, 11, 9, 40).ZIndex = 6
+
+        local fDrop = mk("Frame", {
+            Position = UDim2.new(0, 0, 0, 52),
+            Size = UDim2.new(1, 0, 0, 110),
+            BackgroundTransparency = 1,
+            Visible = false,
+            ZIndex = 5,
+        }, fCard)
+        local fList = mk("ScrollingFrame", {
+            Position = UDim2.new(0, 10, 0, 0),
+            Size = UDim2.new(1, -20, 0, 104),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ScrollBarThickness = 2,
+            ScrollBarImageColor3 = ACCENT,
+            ZIndex = 6,
+        }, fDrop)
+        local fLayout = Instance.new("UIListLayout")
+        fLayout.Padding = UDim.new(0, 3)
+        fLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        fLayout.Parent = fList
+
+        local function refreshFighterList()
+            for _, c in ipairs(fList:GetChildren()) do
+                if c:IsA("TextButton") then c:Destroy() end
+            end
+            fSel.Text = selFighter and selFighter.npc or "-"
+            for i, f in ipairs(fighters) do
+                local isSel = (f == selFighter)
+                local b = mk("TextButton", {
+                    LayoutOrder = i,
+                    Size = UDim2.new(1, -6, 0, 26),
+                    BackgroundColor3 = ITEM,
+                    Text = f.npc .. "  -  " .. f.zone,
+                    TextColor3 = isSel and ACCENT or TXT,
+                    TextSize = 12,
+                    Font = Enum.Font.GothamMedium,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                    AutoButtonColor = false,
+                    ZIndex = 7,
+                }, fList, 6)
+                mk("UIPadding", { PaddingLeft = UDim.new(0, 12) }, b)
+                if isSel then
+                    mk("Frame", {
+                        Position = UDim2.new(0, -12, 0.5, -7),
+                        Size = UDim2.new(0, 3, 0, 14),
+                        BackgroundColor3 = ACCENT,
+                        BorderSizePixel = 0,
+                        ZIndex = 8,
+                    }, b)
+                end
+                b.MouseButton1Click:Connect(function()
+                    selFighter = f
+                    fighting = false
+                    refreshFighterList()
+                end)
+            end
+        end
+        scanFighters()
+        refreshFighterList()
+
+        local fExpanded = false
+        fHeader.MouseButton1Click:Connect(function()
+            fExpanded = not fExpanded
+            tween(fChev, 0.25, { Rotation = fExpanded and 180 or 0 })
+            if fExpanded then
+                scanFighters()
+                refreshFighterList()
+                fDrop.Visible = true
+            else
+                task.delay(0.26, function()
+                    if running and not fExpanded then fDrop.Visible = false end
+                end)
+            end
+            tween(fCard, 0.25, { Size = UDim2.new(1, -8, 0, fExpanded and FIGHT_H or COLLAPSED_H) })
+        end)
+
+        makeSwitch(fCard, 13, false, function(on)
+            fightOn = on
+            if not on then
+                fighting = false
+                local th = task.spawn(function()
+                    local sa = awRemote("RF", "SetAuto")
+                    if sa then pcall(function() sa:InvokeServer(false) end) end
+                end)
+                table.insert(fightThreads, th)
+            end
+            tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn or fightOn) and ACCENT or LINE })
+            updatePill()
+        end)
+
+        local rCrit = row(lPage, 2, 48)
+        nameLabel(rCrit, "Auto Crítico")
+        makeSwitch(rCrit, 13, false, function(on) critOn = on end)
+
+        local rSpeed = row(lPage, 3, 48)
+        nameLabel(rSpeed, "Intervalo")
+        makeStepper(rSpeed, 12, clickInterval, 0.1, 0.1, 2, "%.1fs", function(v) clickInterval = v end)
+
+        local rFights = row(lPage, 4, 40)
+        local l1 = lbl(rFights, "Lutas", 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
+        l1.ZIndex = 6
+        local fightsLabel = lbl(rFights, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+        fightsLabel.Position = UDim2.new(1, -104, 0, 0)
+        fightsLabel.ZIndex = 6
+
+        local rCrits = row(lPage, 5, 40)
+        local l2 = lbl(rCrits, "Críticos", 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
+        l2.ZIndex = 6
+        local critsLabel = lbl(rCrits, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+        critsLabel.Position = UDim2.new(1, -104, 0, 0)
+        critsLabel.ZIndex = 6
+
+        -- procura um GUID dentro dos argumentos de um sinal
+        local function findUuid(v, depth)
+            if type(v) == "string" then
+                if v:match(UUID_PAT) then return v end
+            elseif type(v) == "table" and depth > 0 then
+                for _, x in pairs(v) do
+                    local r = findUuid(x, depth - 1)
+                    if r then return r end
+                end
+            end
+            return nil
+        end
+
+        local function hookSignal(name, fn)
+            local r = awRemote("RE", name)
+            if r and r:IsA("RemoteEvent") then
+                table.insert(fightConns, r.OnClientEvent:Connect(fn))
+            end
+        end
+
+        hookSignal("StartFightSignal", function(_, data)
+            if type(data) == "table" and data.Generation then
+                curGen = data.Generation
+            end
+            fighting = true
+            fightStartedAt = os.clock()
+        end)
+
+        hookSignal("EndFightSignal", function()
+            if fighting then
+                fights = fights + 1
+                fightsLabel.Text = tostring(fights)
+            end
+            fighting = false
+        end)
+
+        hookSignal("SpawnCritSignal", function(...)
+            if not (critOn and fightOn and fighting and selFighter) then return end
+            local id = findUuid(table.pack(...), 4)
+            if not id then return end
+            local f, gen = selFighter, curGen
+            local th = task.spawn(function()
+                local rem = awRemote("RF", "RequestCritHit")
+                if not rem then return end
+                local ok, res = pcall(function()
+                    return rem:InvokeServer({ npcName = f.npc, zone = f.zone, generation = gen }, id)
+                end)
+                if ok and res == true then
+                    crits = crits + 1
+                    critsLabel.Text = tostring(crits)
+                end
+            end)
+            table.insert(fightThreads, th)
+        end)
+
+        fightLoop = task.spawn(function()
+            while running do
+                if fightOn and selFighter then
+                    local f = selFighter
+                    if not fighting then
+                        local sa = awRemote("RF", "SetAuto")
+                        if sa then pcall(function() sa:InvokeServer(true, f.npc) end) end
+                        local st = awRemote("RF", "RequestStartFight")
+                        if st then pcall(function() st:InvokeServer(f.npc) end) end
+                        local waited = 0
+                        while fightOn and not fighting and waited < 2 do
+                            task.wait(0.1)
+                            waited = waited + 0.1
+                        end
+                        if fighting then
+                            task.wait(0.9) -- contagem inicial da luta
+                        else
+                            task.wait(1)
+                        end
+                    else
+                        local rc = awRemote("RF", "RequestClick")
+                        if rc then
+                            local ok, res = pcall(function()
+                                return rc:InvokeServer(false, { npcName = f.npc, zone = f.zone, generation = curGen })
+                            end)
+                            if ok and type(res) == "table" and res.Health and res.MaxHealth and res.Health >= res.MaxHealth then
+                                fighting = false
+                            end
+                        end
+                        if os.clock() - fightStartedAt > 40 then fighting = false end
+                        task.wait(clickInterval)
+                    end
+                else
+                    task.wait(0.3)
+                end
+            end
+        end)
+    end
 
     ----------------------------------------------------
     -- PAINEL FLUTUANTE (minimizado)
@@ -1181,6 +1484,15 @@ local function main()
         pcall(task.cancel, bgThread)
         pcall(task.cancel, claimLoop)
         pcall(task.cancel, auraLoop)
+        pcall(task.cancel, fightLoop)
+        for _, th in ipairs(fightThreads) do pcall(task.cancel, th) end
+        for _, c in ipairs(fightConns) do pcall(function() c:Disconnect() end) end
+        if fightOn then
+            -- desliga o modo automático da luta no servidor
+            local sa = dig(RS, { "Packages", "Knit", "Services", "ArmWrestleService", "RF", "SetAuto" })
+            if sa then task.spawn(function() pcall(function() sa:InvokeServer(false) end) end) end
+        end
+        fightOn = false
         for _, th in ipairs(qThreads) do pcall(task.cancel, th) end
         pcall(function() bgVideo.Playing = false end)
         ENV.__ZaroHub = nil
