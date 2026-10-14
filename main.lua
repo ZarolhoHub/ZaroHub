@@ -1074,12 +1074,18 @@ local function main()
     local fightConns, fightThreads = {}, {}
     do
         local critOn = false
-        local clickInterval = 0.2
+        local autoClickFlag = true
+        local targetCps = 8
         local fights = 0
         local crits = 0
+        local critSignals = 0
+        local critDebug = ""
         local fighting = false
         local curGen = 1
         local fightStartedAt = 0
+        local pending = 0
+        local seenRev = {}
+        local accepted = {}
         local fighters = {}
         local selFighter = nil
         local UUID_PAT = "^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$"
@@ -1087,6 +1093,25 @@ local function main()
 
         local function awRemote(kind, name)
             return dig(RS, { "Packages", "Knit", "Services", "ArmWrestleService", kind, name })
+        end
+
+        local function ser(v, depth)
+            local t = typeof(v)
+            if t == "table" then
+                if depth <= 0 then return "{...}" end
+                local parts, n = {}, 0
+                for k, val in pairs(v) do
+                    n = n + 1
+                    if n > 12 then table.insert(parts, "...") break end
+                    table.insert(parts, tostring(k) .. "=" .. ser(val, depth - 1))
+                end
+                return "{" .. table.concat(parts, ", ") .. "}"
+            elseif t == "string" then
+                return '"' .. string.sub(v, 1, 80) .. '"'
+            elseif t == "Instance" then
+                return v:GetFullName()
+            end
+            return tostring(v)
         end
 
         local function scanFighters()
@@ -1225,6 +1250,14 @@ local function main()
             tween(fCard, 0.25, { Size = UDim2.new(1, -8, 0, fExpanded and FIGHT_H or COLLAPSED_H) })
         end)
 
+        local function setAutoClick(on)
+            local th = task.spawn(function()
+                local sc = awRemote("RF", "SetAutoClick")
+                if sc then pcall(function() sc:InvokeServer(on) end) end
+            end)
+            table.insert(fightThreads, th)
+        end
+
         makeSwitch(fCard, 13, false, function(on)
             fightOn = on
             if not on then
@@ -1234,6 +1267,7 @@ local function main()
                     if sa then pcall(function() sa:InvokeServer(false) end) end
                 end)
                 table.insert(fightThreads, th)
+                if autoClickFlag then setAutoClick(false) end
             end
             tween(mainStroke, 0.2, { Color = (autoBuying or voidOn or auraOn or fightOn) and ACCENT or LINE })
             updatePill()
@@ -1243,23 +1277,50 @@ local function main()
         nameLabel(rCrit, "Auto Crítico")
         makeSwitch(rCrit, 13, false, function(on) critOn = on end)
 
-        local rSpeed = row(lPage, 3, 48)
-        nameLabel(rSpeed, "Intervalo")
-        makeStepper(rSpeed, 12, clickInterval, 0.1, 0.1, 2, "%.1fs", function(v) clickInterval = v end)
+        local rAC = row(lPage, 3, 48)
+        nameLabel(rAC, "Auto Click")
+        makeSwitch(rAC, 13, true, function(on) autoClickFlag = on end)
 
-        local rFights = row(lPage, 4, 40)
-        local l1 = lbl(rFights, "Lutas", 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
-        l1.ZIndex = 6
-        local fightsLabel = lbl(rFights, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
-        fightsLabel.Position = UDim2.new(1, -104, 0, 0)
-        fightsLabel.ZIndex = 6
+        local rSpeed = row(lPage, 4, 48)
+        nameLabel(rSpeed, "CPS")
+        makeStepper(rSpeed, 12, targetCps, 1, 1, 15, "%.0f", function(v) targetCps = v end)
 
-        local rCrits = row(lPage, 5, 40)
-        local l2 = lbl(rCrits, "Críticos", 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
-        l2.ZIndex = 6
-        local critsLabel = lbl(rCrits, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
-        critsLabel.Position = UDim2.new(1, -104, 0, 0)
-        critsLabel.ZIndex = 6
+        local function counterRow(order, name)
+            local r = row(lPage, order, 40)
+            local l = lbl(r, name, 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
+            l.ZIndex = 6
+            local v = lbl(r, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+            v.Position = UDim2.new(1, -104, 0, 0)
+            v.ZIndex = 6
+            return v
+        end
+        local cpsLabel = counterRow(5, "CPS real")
+        local fightsLabel = counterRow(6, "Lutas")
+        local critsLabel = counterRow(7, "Críticos")
+
+        -- Log do crítico (para eu entender o sinal): chip "sinais/acertos" + botão copiar
+        local rLog = row(lPage, 8, 48)
+        nameLabel(rLog, "Crit log")
+        local logChip = lbl(rLog, "0/0", 0, 0, 90, 48, 12, DIM, Enum.TextXAlignment.Right, Enum.Font.Code)
+        logChip.Position = UDim2.new(1, -154, 0, 0)
+        logChip.ZIndex = 6
+        local copyBtn = mk("TextButton", {
+            Position = UDim2.new(1, -56, 0, 13),
+            Size = UDim2.new(0, 44, 0, 22),
+            BackgroundColor3 = ACCENT,
+            Text = "COPIAR",
+            TextColor3 = BG,
+            TextSize = 9,
+            Font = Enum.Font.GothamBlack,
+            AutoButtonColor = false,
+            ZIndex = 6,
+        }, rLog, 6)
+        copyBtn.MouseButton1Click:Connect(function()
+            local txt = critDebug ~= "" and critDebug or "nenhum sinal de critico recebido ainda"
+            local ok = pcall(function() setclipboard(txt) end)
+            copyBtn.Text = ok and "OK" or "X"
+            task.delay(1.2, function() if running then copyBtn.Text = "COPIAR" end end)
+        end)
 
         -- procura um GUID dentro dos argumentos de um sinal
         local function findUuid(v, depth)
@@ -1285,6 +1346,7 @@ local function main()
             if type(data) == "table" and data.Generation then
                 curGen = data.Generation
             end
+            seenRev = {}
             fighting = true
             fightStartedAt = os.clock()
         end)
@@ -1298,23 +1360,85 @@ local function main()
         end)
 
         hookSignal("SpawnCritSignal", function(...)
+            critSignals = critSignals + 1
+            local args = table.pack(...)
+            local parts = {}
+            for i = 1, args.n do table.insert(parts, ser(args[i], 3)) end
+            critDebug = "SpawnCritSignal(" .. table.concat(parts, ", ") .. ")"
+            logChip.Text = critSignals .. "/" .. crits
             if not (critOn and fightOn and fighting and selFighter) then return end
-            local id = findUuid(table.pack(...), 4)
-            if not id then return end
+            local id = findUuid(args, 4)
+            if not id then
+                critDebug = critDebug .. " | sem GUID nos argumentos"
+                return
+            end
             local f, gen = selFighter, curGen
             local th = task.spawn(function()
                 local rem = awRemote("RF", "RequestCritHit")
                 if not rem then return end
                 local ok, res = pcall(function()
-                    return rem:InvokeServer({ npcName = f.npc, zone = f.zone, generation = gen }, id)
+                    return table.pack(rem:InvokeServer({ npcName = f.npc, zone = f.zone, generation = gen }, id))
                 end)
-                if ok and res == true then
-                    crits = crits + 1
-                    critsLabel.Text = tostring(crits)
+                if ok then
+                    local out = {}
+                    for i = 1, res.n do table.insert(out, ser(res[i], 3)) end
+                    critDebug = critDebug .. " | CritHit(gen=" .. tostring(gen) .. ", id=" .. id .. ") -> " .. table.concat(out, ", ")
+                    if res[1] == true then
+                        crits = crits + 1
+                        critsLabel.Text = tostring(crits)
+                    end
+                else
+                    critDebug = critDebug .. " | CritHit erro: " .. tostring(res)
                 end
+                logChip.Text = critSignals .. "/" .. crits
             end)
             table.insert(fightThreads, th)
         end)
+
+        -- clique sem esperar a resposta (a taxa não depende da latência)
+        local function sendClick(f, gen)
+            pending = pending + 1
+            local th = task.spawn(function()
+                local rc = awRemote("RF", "RequestClick")
+                if rc then
+                    local ok, res = pcall(function()
+                        return rc:InvokeServer(false, { npcName = f.npc, zone = f.zone, generation = gen })
+                    end)
+                    if ok and type(res) == "table" then
+                        local rev = res.HealthRevision
+                        if rev ~= nil and not seenRev[rev] then
+                            seenRev[rev] = true
+                            table.insert(accepted, os.clock())
+                        end
+                        if res.Health and res.MaxHealth and res.Health >= res.MaxHealth then
+                            fighting = false
+                        end
+                    end
+                end
+                pending = pending - 1
+            end)
+            table.insert(fightThreads, th)
+            if #fightThreads > 400 then
+                for i = 1, 200 do table.remove(fightThreads, 1) end
+            end
+        end
+
+        -- contador de CPS aceitos pelo servidor
+        table.insert(fightThreads, task.spawn(function()
+            while running do
+                local now = os.clock()
+                local n = 0
+                for i = #accepted, 1, -1 do
+                    if now - accepted[i] > 1 then
+                        table.remove(accepted, i)
+                    else
+                        n = n + 1
+                    end
+                end
+                cpsLabel.Text = tostring(n)
+                task.wait(0.5)
+            end
+        end))
 
         fightLoop = task.spawn(function()
             while running do
@@ -1323,6 +1447,10 @@ local function main()
                     if not fighting then
                         local sa = awRemote("RF", "SetAuto")
                         if sa then pcall(function() sa:InvokeServer(true, f.npc) end) end
+                        if autoClickFlag then
+                            local sc = awRemote("RF", "SetAutoClick")
+                            if sc then pcall(function() sc:InvokeServer(true) end) end
+                        end
                         local st = awRemote("RF", "RequestStartFight")
                         if st then pcall(function() st:InvokeServer(f.npc) end) end
                         local waited = 0
@@ -1336,17 +1464,9 @@ local function main()
                             task.wait(1)
                         end
                     else
-                        local rc = awRemote("RF", "RequestClick")
-                        if rc then
-                            local ok, res = pcall(function()
-                                return rc:InvokeServer(false, { npcName = f.npc, zone = f.zone, generation = curGen })
-                            end)
-                            if ok and type(res) == "table" and res.Health and res.MaxHealth and res.Health >= res.MaxHealth then
-                                fighting = false
-                            end
-                        end
+                        if pending < 15 then sendClick(f, curGen) end
                         if os.clock() - fightStartedAt > 40 then fighting = false end
-                        task.wait(clickInterval)
+                        task.wait(1 / targetCps)
                     end
                 else
                     task.wait(0.3)
@@ -1491,6 +1611,8 @@ local function main()
             -- desliga o modo automático da luta no servidor
             local sa = dig(RS, { "Packages", "Knit", "Services", "ArmWrestleService", "RF", "SetAuto" })
             if sa then task.spawn(function() pcall(function() sa:InvokeServer(false) end) end) end
+            local sc = dig(RS, { "Packages", "Knit", "Services", "ArmWrestleService", "RF", "SetAutoClick" })
+            if sc then task.spawn(function() pcall(function() sc:InvokeServer(false) end) end) end
         end
         fightOn = false
         for _, th in ipairs(qThreads) do pcall(task.cancel, th) end
