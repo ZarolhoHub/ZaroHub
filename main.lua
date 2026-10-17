@@ -416,6 +416,7 @@ local function main()
     local qPage = addTab("Quests", "QUESTS")
     local aPage = addTab("Aura", "AURA")
     local lPage = addTab("Luta", "LUTA")
+    local sPage = addTab("Esp", "ESP")
     tabBtns.Eggs.TextColor3 = ACCENT
 
     local sidebarOpen = true
@@ -1366,29 +1367,52 @@ local function main()
             for i = 1, args.n do table.insert(parts, ser(args[i], 3)) end
             critDebug = "SpawnCritSignal(" .. table.concat(parts, ", ") .. ")"
             logChip.Text = critSignals .. "/" .. crits
-            if not (critOn and fightOn and fighting and selFighter) then return end
+            if not critOn then
+                critDebug = critDebug .. " | ignorado: Auto Critico desligado"
+                return
+            end
+            if not (fightOn and fighting and selFighter) then
+                critDebug = critDebug .. " | ignorado: sem luta ativa"
+                return
+            end
             local id = findUuid(args, 4)
             if not id then
                 critDebug = critDebug .. " | sem GUID nos argumentos"
                 return
             end
+            -- o sinal traz { debounce = 0.4 }: espera esse tempo antes de acertar, como um clique humano
+            local waitTime = 0.45
+            local info = args[2]
+            if type(info) == "table" and tonumber(info.debounce) then
+                waitTime = tonumber(info.debounce) + 0.05
+            end
             local f, gen = selFighter, curGen
             local th = task.spawn(function()
+                task.wait(waitTime)
                 local rem = awRemote("RF", "RequestCritHit")
                 if not rem then return end
-                local ok, res = pcall(function()
-                    return table.pack(rem:InvokeServer({ npcName = f.npc, zone = f.zone, generation = gen }, id))
-                end)
-                if ok then
-                    local out = {}
-                    for i = 1, res.n do table.insert(out, ser(res[i], 3)) end
-                    critDebug = critDebug .. " | CritHit(gen=" .. tostring(gen) .. ", id=" .. id .. ") -> " .. table.concat(out, ", ")
-                    if res[1] == true then
-                        crits = crits + 1
-                        critsLabel.Text = tostring(crits)
+                for attempt = 1, 2 do
+                    if not (running and fighting) then
+                        critDebug = critDebug .. " | luta acabou antes do acerto"
+                        return
                     end
-                else
-                    critDebug = critDebug .. " | CritHit erro: " .. tostring(res)
+                    local ok, res = pcall(function()
+                        return table.pack(rem:InvokeServer({ npcName = f.npc, zone = f.zone, generation = gen }, id))
+                    end)
+                    if ok then
+                        local out = {}
+                        for i = 1, res.n do table.insert(out, ser(res[i], 3)) end
+                        critDebug = critDebug .. " | tentativa " .. attempt .. " (gen=" .. tostring(gen) .. ", espera=" .. string.format("%.2f", waitTime) .. ") -> " .. table.concat(out, ", ")
+                        if res[1] == true then
+                            crits = crits + 1
+                            critsLabel.Text = tostring(crits)
+                            break
+                        end
+                    else
+                        critDebug = critDebug .. " | erro: " .. tostring(res)
+                        break
+                    end
+                    task.wait(0.2)
                 end
                 logChip.Text = critSignals .. "/" .. crits
             end)
@@ -1471,6 +1495,131 @@ local function main()
                 else
                     task.wait(0.3)
                 end
+            end
+        end)
+    end
+
+    ----------------------------------------------------
+    -- PÁGINA ESP (caveiras)
+    ----------------------------------------------------
+    local espLoop, espCleanup
+    do
+        local espOn = false
+        local items = {}
+        local MAX_HL = 20
+
+        local function partOf(o)
+            if o:IsA("BasePart") then return o end
+            if o:IsA("Model") and o.PrimaryPart then return o.PrimaryPart end
+            return o:FindFirstChildWhichIsA("BasePart", true)
+        end
+
+        local function addSkull(o)
+            if items[o] then return end
+            local part = partOf(o)
+            if not part then return end
+
+            local hl = Instance.new("Highlight")
+            hl.Adornee = o
+            hl.FillColor = ACCENT
+            hl.OutlineColor = Color3.new(1, 1, 1)
+            hl.FillTransparency = 0.45
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Enabled = false
+            hl.Parent = o
+
+            local bb = Instance.new("BillboardGui")
+            bb.Name = "ZaroSkullEsp"
+            bb.Adornee = part
+            bb.AlwaysOnTop = true
+            bb.Size = UDim2.new(0, 110, 0, 22)
+            bb.StudsOffset = Vector3.new(0, 2.5, 0)
+
+            local tl = Instance.new("TextLabel")
+            tl.Size = UDim2.new(1, 0, 1, 0)
+            tl.BackgroundTransparency = 1
+            tl.Text = ""
+            tl.TextColor3 = ACCENT
+            tl.TextSize = 13
+            tl.Font = Enum.Font.GothamBlack
+            local us = Instance.new("UIStroke")
+            us.Color = BG
+            us.Thickness = 2
+            us.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+            us.Parent = tl
+            tl.Parent = bb
+            bb.Parent = part
+
+            items[o] = { hl = hl, bb = bb, label = tl, part = part, dist = 0 }
+        end
+
+        local function removeItem(o)
+            local it = items[o]
+            if it then
+                pcall(function() it.hl:Destroy() end)
+                pcall(function() it.bb:Destroy() end)
+                items[o] = nil
+            end
+        end
+
+        espCleanup = function()
+            for o in pairs(items) do removeItem(o) end
+        end
+
+        local rEsp = row(sPage, 1, 48)
+        nameLabel(rEsp, "ESP Caveiras")
+
+        local function counterRow(order, name)
+            local r = row(sPage, order, 40)
+            local l = lbl(r, name, 14, 0, 120, 40, 13, TXT, nil, Enum.Font.GothamBold)
+            l.ZIndex = 6
+            local v = lbl(r, "0", 0, 0, 90, 40, 13, ACCENT, Enum.TextXAlignment.Right, Enum.Font.Code)
+            v.Position = UDim2.new(1, -104, 0, 0)
+            v.ZIndex = 6
+            return v
+        end
+        local countLabel = counterRow(2, "Caveiras")
+        local nearLabel = counterRow(3, "Mais perto")
+        nearLabel.Text = "-"
+
+        makeSwitch(rEsp, 13, false, function(on)
+            espOn = on
+            if not on then
+                espCleanup()
+                countLabel.Text = "0"
+                nearLabel.Text = "-"
+            end
+        end)
+
+        espLoop = task.spawn(function()
+            while running do
+                if espOn then
+                    local folder = dig(workspace, { "GameObjects", "Skulls" })
+                    if folder then
+                        for _, o in ipairs(folder:GetChildren()) do addSkull(o) end
+                    end
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local list = {}
+                    for o, it in pairs(items) do
+                        if not o.Parent or not it.part.Parent then
+                            removeItem(o)
+                        else
+                            local d = hrp and (it.part.Position - hrp.Position).Magnitude or 0
+                            it.dist = d
+                            it.label.Text = string.format("CAVEIRA %dm", math.floor(d))
+                            table.insert(list, it)
+                        end
+                    end
+                    table.sort(list, function(a, b) return a.dist < b.dist end)
+                    for i, it in ipairs(list) do
+                        it.hl.Enabled = (i <= MAX_HL)
+                    end
+                    countLabel.Text = tostring(#list)
+                    nearLabel.Text = list[1] and (tostring(math.floor(list[1].dist)) .. "m") or "-"
+                end
+                task.wait(0.3)
             end
         end)
     end
@@ -1605,6 +1754,8 @@ local function main()
         pcall(task.cancel, claimLoop)
         pcall(task.cancel, auraLoop)
         pcall(task.cancel, fightLoop)
+        pcall(task.cancel, espLoop)
+        if espCleanup then pcall(espCleanup) end
         for _, th in ipairs(fightThreads) do pcall(task.cancel, th) end
         for _, c in ipairs(fightConns) do pcall(function() c:Disconnect() end) end
         if fightOn then
